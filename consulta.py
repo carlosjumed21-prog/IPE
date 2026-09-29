@@ -10,18 +10,20 @@ def app():
   st.subheader("🔍 Consultar Compras y Tickets")
 
   if not os.path.exists(REGISTROS_PATH):
-    st.info("Aún no existen registros de compras guardados.")
+    st.info(
+        "Aún no existen registros de compras guardados. Realiza una nueva compra"
+        " para generar registros."
+    )
     return
 
   df_registros = pd.read_csv(REGISTROS_PATH)
 
-  # Cuadro de búsqueda general (fecha, folio, nombre, etc.)
+  # Cuadro de búsqueda general (fecha, folio, nombre, grupo, etc.)
   busqueda = st.text_input(
-      "Ingrese Folio, Fecha, Nombre del alumno o cualquier dato para buscar:"
+      "Ingrese Folio, Fecha, Nombre del alumno o grupo para buscar:"
   )
 
   if busqueda:
-    # Filtrar filas que contengan el texto en cualquier columna
     mask = df_registros.apply(
         lambda row: row.astype(str).str.contains(busqueda, case=False).any(),
         axis=1,
@@ -36,12 +38,12 @@ def app():
 
   st.dataframe(df_filtrado, use_container_width=True)
 
-  st.markdown("### 🖨️ Tickets Disponibles para Impresión")
+  st.markdown("### 🖨️ Tickets Disponibles para Impresión / Descarga")
 
-  # Seleccionar un folio específico de los resultados filtrados para ver/imprimir su ticket
+  # Seleccionar un folio de los resultados filtrados
   folios_encontrados = df_filtrado["Folio"].astype(str).tolist()
   folio_seleccionado = st.selectbox(
-      "Seleccione el Folio del ticket a visualizar:", options=folios_encontrados
+      "Seleccione el Folio del ticket:", options=folios_encontrados
   )
 
   if folio_seleccionado:
@@ -51,7 +53,7 @@ def app():
       st.success(f"Ticket encontrado para el Folio: {folio_seleccionado}")
       with open(pdf_path, "rb") as f:
         st.download_button(
-            label=f"📄 Descargar / Imprimir Ticket (Folio {folio_seleccionado})",
+            label=f"📥 Descargar PDF del Ticket (Folio {folio_seleccionado})",
             data=f,
             file_name=f"ticket_{folio_seleccionado}.pdf",
             mime="application/pdf",

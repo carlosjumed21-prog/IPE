@@ -279,56 +279,14 @@ def obtener_imagen_base64(ruta_imagen):
 
 
 def app():
-    st.subheader("📝 Gestión de Ventas y Comprobantes")
+    st.subheader("📝 Registrar Nueva Compra")
 
-    # Inicialización de estados de sesión
-    if "seccion_actual" not in st.session_state:
-        st.session_state["seccion_actual"] = "Registrar Compra"
     if "is_processing" not in st.session_state:
         st.session_state["is_processing"] = False
     if "ultima_venta" not in st.session_state:
         st.session_state["ultima_venta"] = None
     if "alumnos_registrados" not in st.session_state:
         st.session_state["alumnos_registrados"] = set()
-
-    # Estilo visual moderno para pestañas en recuadros resaltados (sin puntos de radio)
-    st.markdown(
-        """
-        <style>
-            div.row-widget.stRadio > div {
-                flex-direction: row;
-                gap: 15px;
-            }
-            div.row-widget.stRadio > div[role="radiogroup"] > label {
-                background-color: #f1f3f5;
-                padding: 10px 20px;
-                border-radius: 8px;
-                border: 2px solid #dee2e6;
-                font-weight: bold;
-                color: #343a40;
-                cursor: pointer;
-            }
-            div.row-widget.stRadio > div[role="radiogroup"] > label[data-baseweb="radio"]:has(input:checked) {
-                background-color: #000000 !important;
-                color: #ffffff !important;
-                border-color: #000000 !important;
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Menú de navegación en pestañas/recuadros limpios
-    seccion = st.radio(
-        "Navegación:",
-        options=["Registrar Compra", "Comprobante de Venta"],
-        index=0 if st.session_state["seccion_actual"] == "Registrar Compra" else 1,
-        key="menu_recuadros_navegacion",
-        label_visibility="collapsed",
-    )
-
-    # Sincronizamos estado
-    st.session_state["seccion_actual"] = seccion
 
     dic_grupos, error = cargar_alumnos_por_grupos()
     if error:
@@ -337,154 +295,19 @@ def app():
 
     lista_grupos = sorted(list(dic_grupos.keys()))
 
-    # ================= SECCIÓN 1: REGISTRAR COMPRA =================
-    if seccion == "Registrar Compra":
-        st.markdown("### 🛒 Capturar Nueva Venta")
+    # Si ya se completó una venta, mostramos directamente el comprobante y el botón de nuevo registro
+    if st.session_state["ultima_venta"] is not None:
+        st.success("🎉 ¡Venta registrada y sincronizada con éxito!")
+        
+        # Botón único para volver arriba al menú de inicio / nuevo registro
+        if st.button("🔄 Nuevo Registro", type="primary", use_container_width=True):
+            st.session_state["ultima_venta"] = None
+            st.rerun()
 
-        def actualizar_grupo():
-            st.session_state["alumno_seleccionado"] = None
+        st.markdown("---")
+        st.markdown("### 🖨️ Comprobante de Venta")
 
-        grupo_seleccionado = st.selectbox(
-            "Seleccione el Grupo:",
-            options=lista_grupos,
-            index=None,
-            placeholder="Seleccione un grupo...",
-            key="grupo_seleccionado",
-            on_change=actualizar_grupo,
-        )
-
-        # Filtramos la lista para excluir alumnos que ya fueron registrados en esta sesión
-        alumnos_crudos = dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
-        lista_alumnos = [
-            a for a in alumnos_crudos 
-            if a not in st.session_state["alumnos_registrados"]
-        ]
-
-        if grupo_seleccionado and not lista_alumnos:
-            st.info("ℹ️ Todos los alumnos de este grupo ya cuentan con su registro de compra.")
-
-        nombre_alumno = st.selectbox(
-            "Nombre del alumno:",
-            options=lista_alumnos,
-            index=None,
-            placeholder=(
-                "Seleccione primero un grupo..."
-                if not grupo_seleccionado
-                else "Seleccione un alumno disponible..."
-            ),
-            key="alumno_seleccionado",
-        )
-
-        with st.form("form_compra_detalles"):
-            st.markdown("---")
-            concepto = st.text_input(
-                "Concepto:", value="Fotografía Navidad 2026", disabled=True
-            )
-            importe = st.number_input(
-                "Importe ($):", value=350.0, format="%.2f", disabled=True
-            )
-
-            atendio = st.selectbox(
-                "Quién atendió:",
-                options=[
-                    "Victoria Garcia Valencia",
-                    "Jose Francisco Resendiz",
-                    "Grecia Ramirez Arenas",
-                ],
-                index=None,
-                placeholder="Seleccione quién atiende...",
-            )
-
-            submitted = st.form_submit_button("Confirmar Compra")
-
-        if submitted:
-            if not grupo_seleccionado:
-                st.warning("⚠️ Por favor seleccione un grupo.")
-            elif not nombre_alumno:
-                st.warning("⚠️ Por favor seleccione un alumno.")
-            elif not atendio:
-                st.warning("⚠️ Por favor seleccione quién atiende.")
-            else:
-                fecha_hora_actual = obtener_fecha_hora_actual()
-                st.session_state["pending_compra"] = {
-                    "Alumno": nombre_alumno,
-                    "Grupo": grupo_seleccionado,
-                    "Concepto": "Fotografía Navidad 2026",
-                    "Importe": 350.0,
-                    "Atendio": atendio,
-                    "Fecha": fecha_hora_actual,
-                }
-                st.session_state["show_confirm"] = True
-
-        if st.session_state.get("show_confirm", False):
-            st.warning("⚠️ ¿Está seguro de confirmar y registrar esta compra?")
-            col_si, col_no = st.columns(2)
-
-            with col_si:
-                if st.button(
-                    "Sí, Confirmar",
-                    disabled=st.session_state["is_processing"],
-                    key="btn_confirmar_venta",
-                ):
-                    st.session_state["is_processing"] = True
-                    datos = st.session_state["pending_compra"]
-
-                    folio = obtener_siguiente_folio()
-                    datos["Folio"] = folio
-
-                    # 1. Resguardo local CSV
-                    os.makedirs("assets", exist_ok=True)
-                    if os.path.exists(CSV_PATH):
-                        df_reg = pd.read_csv(CSV_PATH)
-                        df_reg = pd.concat(
-                            [df_reg, pd.DataFrame([datos])], ignore_index=True
-                        )
-                    else:
-                        df_reg = pd.DataFrame([datos])
-                    df_reg.to_csv(CSV_PATH, index=False)
-
-                    # 2. Sincronización exacta en Google Sheets
-                    sheet_ok = guardar_en_google_sheets(datos)
-                    if sheet_ok:
-                        st.success(
-                            f"🎉 ¡Compra registrada con éxito en Google Sheets! Folio: #{folio}"
-                        )
-                    else:
-                        st.warning(
-                            f"⚠️ Guardado localmente, pero error al sincronizar con Google Sheets. Folio: #{folio}"
-                        )
-
-                    # Marcamos al alumno como registrado para eliminarlo del desplegable
-                    st.session_state["alumnos_registrados"].add(datos["Alumno"])
-
-                    # Guardamos la última venta y pasamos automáticamente a la sección 2
-                    st.session_state["ultima_venta"] = datos
-                    st.session_state["show_confirm"] = False
-                    st.session_state["is_processing"] = False
-                    st.session_state["seccion_actual"] = "Comprobante de Venta"
-                    st.rerun()
-
-            with col_no:
-                if st.button("No, Regresar", disabled=st.session_state["is_processing"]):
-                    st.info("Captura cancelada.")
-                    st.session_state["show_confirm"] = False
-                    st.rerun()
-
-    # ================= SECCIÓN 2: COMPROBANTE DE VENTA =================
-    elif seccion == "Comprobante de Venta":
-        st.markdown("### 🖨️ Comprobante y Vista Previa del Ticket")
-
-        datos_venta = st.session_state.get("ultima_venta", None)
-
-        if not datos_venta:
-            st.info(
-                "No hay ninguna venta registrada recientemente. Por favor registre una compra primero."
-            )
-            if st.button("⬅️ Ir a Registrar Compra"):
-                st.session_state["seccion_actual"] = "Registrar Compra"
-                st.rerun()
-            return
-
+        datos_venta = st.session_state["ultima_venta"]
         folio = datos_venta["Folio"]
         pdf_path = generar_ticket_pdf(datos_venta, folio)
 
@@ -631,21 +454,124 @@ def app():
         """
 
         st.components.v1.html(html_ticket_preview, height=620, scrolling=True)
+        return
 
+    # Formulario normal de registro
+    def actualizar_grupo():
+        st.session_state["alumno_seleccionado"] = None
+
+    grupo_seleccionado = st.selectbox(
+        "Seleccione el Grupo:",
+        options=lista_grupos,
+        index=None,
+        placeholder="Seleccione un grupo...",
+        key="grupo_seleccionado",
+        on_change=actualizar_grupo,
+    )
+
+    alumnos_crudos = dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
+    lista_alumnos = [
+        a for a in alumnos_crudos 
+        if a not in st.session_state["alumnos_registrados"]
+    ]
+
+    if grupo_seleccionado and not lista_alumnos:
+        st.info("ℹ️ Todos los alumnos de este grupo ya cuentan con su registro de compra.")
+
+    nombre_alumno = st.selectbox(
+        "Nombre del alumno:",
+        options=lista_alumnos,
+        index=None,
+        placeholder=(
+            "Seleccione primero un grupo..."
+            if not grupo_seleccionado
+            else "Seleccione un alumno disponible..."
+        ),
+        key="alumno_seleccionado",
+    )
+
+    with st.form("form_compra_detalles"):
         st.markdown("---")
-        # Botones de navegación solicitados
-        col_ant, col_sig, col_nuevo = st.columns(3)
+        concepto = st.text_input(
+            "Concepto:", value="Fotografía Navidad 2026", disabled=True
+        )
+        importe = st.number_input(
+            "Importe ($):", value=350.0, format="%.2f", disabled=True
+        )
 
-        with col_ant:
-            if st.button("⬅️ Anterior"):
-                st.info("Mostrando registro anterior.")
+        atendio = st.selectbox(
+            "Quién atendió:",
+            options=[
+                "Victoria Garcia Valencia",
+                "Jose Francisco Resendiz",
+                "Grecia Ramirez Arenas",
+            ],
+            index=None,
+            placeholder="Seleccione quién atiende...",
+        )
 
-        with col_sig:
-            if st.button("Siguiente ➡️"):
-                st.info("Mostrando siguiente registro.")
+        submitted = st.form_submit_button("Confirmar Compra")
 
-        with col_nuevo:
-            if st.button("➕ Registrar otro alumno"):
-                st.session_state["ultima_venta"] = None
-                st.session_state["seccion_actual"] = "Registrar Compra"
+    if submitted:
+        if not grupo_seleccionado:
+            st.warning("⚠️ Por favor seleccione un grupo.")
+        elif not nombre_alumno:
+            st.warning("⚠️ Por favor seleccione un alumno.")
+        elif not atendio:
+            st.warning("⚠️ Por favor seleccione quién atiende.")
+        else:
+            fecha_hora_actual = obtener_fecha_hora_actual()
+            st.session_state["pending_compra"] = {
+                "Alumno": nombre_alumno,
+                "Grupo": grupo_seleccionado,
+                "Concepto": "Fotografía Navidad 2026",
+                "Importe": 350.0,
+                "Atendio": atendio,
+                "Fecha": fecha_hora_actual,
+            }
+            st.session_state["show_confirm"] = True
+
+    if st.session_state.get("show_confirm", False):
+        st.warning("⚠️ ¿Está seguro de confirmar y registrar esta compra?")
+        col_si, col_no = st.columns(2)
+
+        with col_si:
+            if st.button(
+                "Sí, Confirmar",
+                disabled=st.session_state["is_processing"],
+                key="btn_confirmar_venta",
+            ):
+                st.session_state["is_processing"] = True
+                datos = st.session_state["pending_compra"]
+
+                folio = obtener_siguiente_folio()
+                datos["Folio"] = folio
+
+                # 1. Resguardo local CSV
+                os.makedirs("assets", exist_ok=True)
+                if os.path.exists(CSV_PATH):
+                    df_reg = pd.read_csv(CSV_PATH)
+                    df_reg = pd.concat(
+                        [df_reg, pd.DataFrame([datos])], ignore_index=True
+                    )
+                else:
+                    df_reg = pd.DataFrame([datos])
+                df_reg.to_csv(CSV_PATH, index=False)
+
+                # 2. Sincronización exacta en Google Sheets
+                sheet_ok = guardar_en_google_sheets(datos)
+
+                # Marcamos al alumno como registrado para eliminarlo del desplegable
+                st.session_state["alumnos_registrados"].add(datos["Alumno"])
+
+                # Guardamos la última venta y reseteamos confirmación
+                st.session_state["ultima_venta"] = datos
+                st.session_state["show_confirm"] = False
+                st.session_state["is_processing"] = False
+                st.rerun()
+
+        with col_no:
+            if st.button("No, Regresar", disabled=st.session_state["is_processing"]):
+                st.info("Captura cancelada.")
+                st.session_state["show_confirm"] = False
                 st.rerun()

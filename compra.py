@@ -1,4 +1,4 @@
-import base64
+base64
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import os
@@ -194,18 +194,6 @@ def generar_ticket_pdf(datos_compra, folio):
   return pdf_path
 
 
-def mostrar_pdf_en_pantalla(pdf_path):
-  """Muestra el PDF incrustado en Streamlit como previsualización."""
-  if os.path.exists(pdf_path):
-    with open(pdf_path, "rb") as f:
-      base64_pdf = base64.b64encode(f.read()).decode("utf-8")
-    pdf_display = (
-        f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%"'
-        ' height="600px" type="application/pdf"></iframe>'
-    )
-    st.markdown(pdf_display, unsafe_allow_html=True)
-
-
 def app():
   st.subheader("📝 Registrar Nueva Compra")
 
@@ -306,17 +294,20 @@ def app():
 
         pdf_path = generar_ticket_pdf(datos, folio)
         st.success(
-            f"¡Compra realizada con éxito! Folio generado: {folio} (PDF"
-            " generado en formato térmico exacto)"
+            f"¡Compra realizada con éxito! Folio generado: {folio} (Ticket PDF"
+            " listo para impresión)"
         )
         st.session_state["show_confirm"] = False
 
-        st.markdown("### 🖨️ Vista Previa e Impresión del Ticket")
-        mostrar_pdf_en_pantalla(pdf_path)
+        st.markdown("### 🖨️ Imprimir Ticket Generado")
+        st.info(
+            "Haz clic en el botón de abajo para descargar y abrir tu ticket"
+            " térmico con las dimensiones exactas."
+        )
 
         with open(pdf_path, "rb") as f:
           st.download_button(
-              label="📥 Descargar Archivo PDF del Ticket",
+              label="🖨️ Descargar e Imprimir Ticket PDF",
               data=f,
               file_name=f"ticket_{folio}.pdf",
               mime="application/pdf",

@@ -2,12 +2,13 @@ import base64
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import os
+import gspread
+from google.oauth2.service_account import Credentials
 import pandas as pd
 from reportlab.lib.pagesizes import mm
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 
 EXCEL_PATH = "assets/alumnosprimaria.xlsx"
 FOLIOS_DIR = "assets/folios"
@@ -111,24 +112,24 @@ def obtener_siguiente_folio():
 
 
 def guardar_en_google_sheets(datos):
-    """Sincroniza la venta en la pestaña correspondiente del Google Sheet oficial."""
+    """Sincroniza la venta en la pestaña correspondiente del Google Sheet usando credenciales de st.secrets."""
     try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        # Leemos la hoja correspondiente al grupo
-        # Nota: gspread permite acceder a hojas por nombre
-        # Usamos client de gspread para insertar directamente en la pestaña del grupo
-        client = conn.client
-        sh = client.open_by_url(sheet_url=SHEET_URL)
-        
+        scope = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds_dict = dict(st.secrets["connections"]["gsheets"])
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        client = gspread.authorize(creds)
+
+        sh = client.open_by_url(SHEET_URL)
         grupo_hoja = str(datos["Grupo"])
+
         try:
             worksheet = sh.worksheet(grupo_hoja)
         except Exception:
-            # Si la pestaña no existe por alguna razón, usa la primera o avisa
             worksheet = sh.sheet1
 
-        # Estructura requerida: # | Nombre de alumno | Folio | Fecha y Hora | Importe
-        # Determinamos el número consecutivo en la hoja
         existing_data = worksheet.get_all_values()
         siguiente_id = len(existing_data) if len(existing_data) > 0 else 1
 
@@ -137,7 +138,7 @@ def guardar_en_google_sheets(datos):
             datos["Alumno"],
             datos["Folio"],
             datos["Fecha"],
-            datos["Importe"]
+            datos["Importe"],
         ]
         worksheet.append_row(nueva_fila)
         return True

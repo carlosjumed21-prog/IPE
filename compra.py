@@ -104,9 +104,10 @@ def generar_ticket_pdf(datos_compra, folio):
       textColor="#000000",
   )
 
+  # Logo en PDF reducido un 50%
   if os.path.exists(LOGO_PATH):
     try:
-      img_logo = Image(LOGO_PATH, width=30 * mm, height=11 * mm)
+      img_logo = Image(LOGO_PATH, width=22 * mm, height=8 * mm)
       img_logo.hAlign = "CENTER"
       story.append(img_logo)
       story.append(Spacer(1, 4))
@@ -191,11 +192,9 @@ def app():
 
   lista_grupos = sorted(list(dic_grupos.keys()))
 
-  # Callback para limpiar el alumno seleccionado si cambia el grupo
   def actualizar_grupo():
     st.session_state["alumno_seleccionado"] = None
 
-  # 1. Menú desplegable de Grupos (fuera del formulario para permitir interactividad en tiempo real)
   grupo_seleccionado = st.selectbox(
       "Seleccione el Grupo:",
       options=lista_grupos,
@@ -205,7 +204,6 @@ def app():
       on_change=actualizar_grupo,
   )
 
-  # 2. Menú desplegable de Alumnos acorde al grupo seleccionado
   lista_alumnos = (
       dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
   )
@@ -280,7 +278,6 @@ def app():
         st.success(f"¡Compra realizada con éxito! Folio generado: {folio}")
         st.session_state["show_confirm"] = False
 
-        # Texto del ticket térmico con diseño mejorado
         lineas = []
         lineas.append("================================")
         lineas.append("    FOTOGRAFÍA NAVIDAD 2026   ")
@@ -323,6 +320,7 @@ def app():
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
+        # HTML con logo reducido al 50% (max-width: 22mm)
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -353,7 +351,7 @@ def app():
                     text-align: center;
                   }}
                   .logo-container img {{
-                    max-width: 38mm;
+                    max-width: 22mm; /* Reducido un 50% manteniendo proporciones */
                     height: auto;
                     display: block;
                     margin: 0 auto 5px auto;

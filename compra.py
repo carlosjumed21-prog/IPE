@@ -130,20 +130,16 @@ def guardar_en_google_sheets(datos):
         except Exception:
             worksheet = sh.sheet1
 
-        # Obtenemos todas las filas actuales de la hoja
         todas_las_filas = worksheet.get_all_values()
 
-        # Determinamos la última fila que realmente contiene datos en la Columna A (#)
         ultima_fila_con_datos = 1
         for idx, fila in enumerate(todas_las_filas):
             if len(fila) > 0 and str(fila[0]).strip() != "":
-                # Verificamos si no es el encabezado buscando si es un número entero
                 if idx > 0:
                     ultima_fila_con_datos = idx + 1
                 elif idx == 0 and str(fila[0]).lower() not in ["#", "id", "número", "numero"]:
                     ultima_fila_con_datos = 1
 
-        # Si no hay registros de datos, empezamos en la fila 2. Si ya hay, sumamos 1.
         siguiente_fila = max(2, ultima_fila_con_datos + 1)
         siguiente_id = siguiente_fila - 1
 
@@ -285,21 +281,54 @@ def obtener_imagen_base64(ruta_imagen):
 def app():
     st.subheader("📝 Gestión de Ventas y Comprobantes")
 
-    # Inicializar variables de estado para navegación por secciones
+    # Inicialización de estados de sesión
     if "seccion_actual" not in st.session_state:
-        st.session_state["seccion_actual"] = "1. Registrar Compra"
+        st.session_state["seccion_actual"] = "Registrar Compra"
     if "is_processing" not in st.session_state:
         st.session_state["is_processing"] = False
     if "ultima_venta" not in st.session_state:
         st.session_state["ultima_venta"] = None
+    if "alumnos_registrados" not in st.session_state:
+        st.session_state["alumnos_registrados"] = set()
 
-    # Menú de navegación superior en dos secciones
-    seccion = st.radio(
-        "Menú de Navegación:",
-        options=["1. Registrar Compra", "2. Comprobante de Venta"],
-        key="menu_navegacion_ventas",
-        horizontal=True,
+    # Estilo visual moderno para pestañas en recuadros resaltados (sin puntos de radio)
+    st.markdown(
+        """
+        <style>
+            div.row-widget.stRadio > div {
+                flex-direction: row;
+                gap: 15px;
+            }
+            div.row-widget.stRadio > div[role="radiogroup"] > label {
+                background-color: #f1f3f5;
+                padding: 10px 20px;
+                border-radius: 8px;
+                border: 2px solid #dee2e6;
+                font-weight: bold;
+                color: #343a40;
+                cursor: pointer;
+            }
+            div.row-widget.stRadio > div[role="radiogroup"] > label[data-baseweb="radio"]:has(input:checked) {
+                background-color: #000000 !important;
+                color: #ffffff !important;
+                border-color: #000000 !important;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
+
+    # Menú de navegación en pestañas/recuadros limpios
+    seccion = st.radio(
+        "Navegación:",
+        options=["Registrar Compra", "Comprobante de Venta"],
+        index=0 if st.session_state["seccion_actual"] == "Registrar Compra" else 1,
+        key="menu_recuadros_navegacion",
+        label_visibility="collapsed",
+    )
+
+    # Sincronizamos estado
+    st.session_state["seccion_actual"] = seccion
 
     dic_grupos, error = cargar_alumnos_por_grupos()
     if error:
@@ -309,7 +338,7 @@ def app():
     lista_grupos = sorted(list(dic_grupos.keys()))
 
     # ================= SECCIÓN 1: REGISTRAR COMPRA =================
-    if seccion == "1. Registrar Compra":
+    if seccion == "Registrar Compra":
         st.markdown("### 🛒 Capturar Nueva Venta")
 
         def actualizar_grupo():
@@ -324,9 +353,16 @@ def app():
             on_change=actualizar_grupo,
         )
 
-        lista_alumnos = (
-            dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
-        )
+        # Filtramos la lista para excluir alumnos que ya fueron registrados en esta sesión
+        alumnos_crudos = dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
+        lista_alumnos = [
+            a for a in alumnos_crudos 
+            if a not in st.session_state["alumnos_registrados"]
+        ]
+
+        if grupo_seleccionado and not lista_alumnos:
+            st.info("ℹ️ Todos los alumnos de este grupo ya cuentan con su registro de compra.")
+
         nombre_alumno = st.selectbox(
             "Nombre del alumno:",
             options=lista_alumnos,
@@ -334,7 +370,7 @@ def app():
             placeholder=(
                 "Seleccione primero un grupo..."
                 if not grupo_seleccionado
-                else "Seleccione un alumno..."
+                else "Seleccione un alumno disponible..."
             ),
             key="alumno_seleccionado",
         )
@@ -396,7 +432,7 @@ def app():
                     folio = obtener_siguiente_folio()
                     datos["Folio"] = folio
 
-                    # 1. Resguardo local en CSV
+                    # 1. Resguardo local CSV
                     os.makedirs("assets", exist_ok=True)
                     if os.path.exists(CSV_PATH):
                         df_reg = pd.read_csv(CSV_PATH)
@@ -418,13 +454,14 @@ def app():
                             f"⚠️ Guardado localmente, pero error al sincronizar con Google Sheets. Folio: #{folio}"
                         )
 
-                    # Guardamos los datos de la última venta para mostrar el comprobante
+                    # Marcamos al alumno como registrado para eliminarlo del desplegable
+                    st.session_state["alumnos_registrados"].add(datos["Alumno"])
+
+                    # Guardamos la última venta y pasamos automáticamente a la sección 2
                     st.session_state["ultima_venta"] = datos
                     st.session_state["show_confirm"] = False
                     st.session_state["is_processing"] = False
-
-                    # Cambiamos automáticamente a la sección 2 (Comprobante)
-                    st.success("Redirigiendo al comprobante de venta...")
+                    st.session_state["seccion_actual"] = "Comprobante de Venta"
                     st.rerun()
 
             with col_no:
@@ -434,22 +471,23 @@ def app():
                     st.rerun()
 
     # ================= SECCIÓN 2: COMPROBANTE DE VENTA =================
-    elif seccion == "2. Comprobante de Venta":
+    elif seccion == "Comprobante de Venta":
         st.markdown("### 🖨️ Comprobante y Vista Previa del Ticket")
 
         datos_venta = st.session_state.get("ultima_venta", None)
 
         if not datos_venta:
             st.info(
-                "No hay ninguna venta registrada recientemente en esta sesión."
-                " Por favor registre una compra en la sección 1."
+                "No hay ninguna venta registrada recientemente. Por favor registre una compra primero."
             )
+            if st.button("⬅️ Ir a Registrar Compra"):
+                st.session_state["seccion_actual"] = "Registrar Compra"
+                st.rerun()
             return
 
         folio = datos_venta["Folio"]
         pdf_path = generar_ticket_pdf(datos_venta, folio)
 
-        # Construcción del texto del ticket térmico
         lineas = []
         lineas.append("==================")
         lineas.append("   FOTOGRAFÍA   ")
@@ -600,13 +638,14 @@ def app():
 
         with col_ant:
             if st.button("⬅️ Anterior"):
-                st.info("Navegación al registro anterior.")
+                st.info("Mostrando registro anterior.")
 
         with col_sig:
             if st.button("Siguiente ➡️"):
-                st.info("Navegación al siguiente registro.")
+                st.info("Mostrando siguiente registro.")
 
         with col_nuevo:
             if st.button("➕ Registrar otro alumno"):
                 st.session_state["ultima_venta"] = None
+                st.session_state["seccion_actual"] = "Registrar Compra"
                 st.rerun()

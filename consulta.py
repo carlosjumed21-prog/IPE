@@ -1,19 +1,25 @@
 from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 import pandas as pd
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1O8kzQuR1Um2BbVO5rcEDbgZWauSPto_2uI8rM_JVdUg/edit?usp=sharing"
 
 
 @st.cache_data(ttl=60)
 def cargar_todos_los_registros_gsheets():
-    """Carga y consolida todas las pestañas (grupos) del Google Sheet oficial."""
+    """Carga y consolida todas las pestañas (grupos) del Google Sheet oficial usando credenciales nativas."""
     try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        client = conn.client
-        sh = client.open_by_url(sheet_url=SHEET_URL)
+        scope = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds_dict = dict(st.secrets["connections"]["gsheets"])
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        client = gspread.authorize(creds)
 
+        sh = client.open_by_url(SHEET_URL)
         worksheets = sh.worksheets()
         datos_consolidados = []
 
@@ -21,18 +27,20 @@ def cargar_todos_los_registros_gsheets():
             nombre_grupo = ws.title
             registros = ws.get_all_values()
 
-            if len(registros) > 0:
-                # Omitimos posibles encabezados vacíos o los detectamos
-                filas = registros[1:] if len(registros) > 1 else []
+            if len(registros) > 1:
+                # Omitimos el encabezado (fila 1) y recorremos las filas de datos
+                filas = registros[1:]
                 for fila in filas:
-                    if len(fila) >= 5 and fila[1].strip() != "":
+                    # Validamos que al menos tenga datos en las columnas principales
+                    if len(fila) >= 6 and str(fila[1]).strip() != "":
                         datos_consolidados.append({
                             "Grupo": nombre_grupo,
                             "#": fila[0],
-                            "Nombre de alumno": fila[1],
-                            "Folio": fila[2],
+                            "Folio": fila[1],
+                            "Nombre de alumno": fila[2],
                             "Fecha y Hora": fila[3],
                             "Importe": fila[4],
+                            "Atendió": fila[5],
                         })
 
         if not datos_consolidados:
@@ -40,10 +48,11 @@ def cargar_todos_los_registros_gsheets():
                 columns=[
                     "Grupo",
                     "#",
-                    "Nombre de alumno",
                     "Folio",
+                    "Nombre de alumno",
                     "Fecha y Hora",
                     "Importe",
+                    "Atendió",
                 ]
             )
 

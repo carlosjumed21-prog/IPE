@@ -1,65 +1,112 @@
-import os
+from datetime import datetime
 import pandas as pd
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
-FOLIOS_DIR = "assets/folios"
-REGISTROS_PATH = "assets/registros_compras.csv"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1O8kzQuR1Um2BbVO5rcEDbgZWauSPto_2uI8rM_JVdUg/edit?usp=sharing"
+
+
+@st.cache_data(ttl=60)
+def cargar_todos_los_registros_gsheets():
+    """Carga y consolida todas las pestañas (grupos) del Google Sheet oficial."""
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        client = conn.client
+        sh = client.open_by_url(sheet_url=SHEET_URL)
+
+        worksheets = sh.worksheets()
+        datos_consolidados = []
+
+        for ws in worksheets:
+            nombre_grupo = ws.title
+            registros = ws.get_all_values()
+
+            if len(registros) > 0:
+                # Omitimos posibles encabezados vacíos o los detectamos
+                filas = registros[1:] if len(registros) > 1 else []
+                for fila in filas:
+                    if len(fila) >= 5 and fila[1].strip() != "":
+                        datos_consolidados.append({
+                            "Grupo": nombre_grupo,
+                            "#": fila[0],
+                            "Nombre de alumno": fila[1],
+                            "Folio": fila[2],
+                            "Fecha y Hora": fila[3],
+                            "Importe": fila[4],
+                        })
+
+        if not datos_consolidados:
+            return pd.DataFrame(
+                columns=[
+                    "Grupo",
+                    "#",
+                    "Nombre de alumno",
+                    "Folio",
+                    "Fecha y Hora",
+                    "Importe",
+                ]
+            )
+
+        return pd.DataFrame(datos_consolidados)
+    except Exception as e:
+        st.error(f"Error al conectar con Google Sheets: {e}")
+        return None
 
 
 def app():
-  st.subheader("🔍 Consultar Compras y Tickets")
-
-  if not os.path.exists(REGISTROS_PATH):
-    st.info(
-        "Aún no existen registros de compras guardados. Realiza una nueva compra"
-        " para generar registros."
+    st.subheader("🔍 Consulta de Ventas y Tickets")
+    st.markdown(
+        "Busca y filtra los registros sincronizados en el Google Sheet oficial."
     )
-    return
 
-  df_registros = pd.read_csv(REGISTROS_PATH)
+    with st.spinner("Sincronizando datos desde Google Sheets..."):
+        df_ventas = cargar_todos_los_registros_gsheets()
 
-  # Cuadro de búsqueda general (fecha, folio, nombre, grupo, etc.)
-  busqueda = st.text_input(
-      "Ingrese Folio, Fecha, Nombre del alumno o grupo para buscar:"
-  )
-
-  if busqueda:
-    mask = df_registros.apply(
-        lambda row: row.astype(str).str.contains(busqueda, case=False).any(),
-        axis=1,
-    )
-    df_filtrado = df_registros[mask]
-  else:
-    df_filtrado = df_registros
-
-  if df_filtrado.empty:
-    st.warning("No se encontraron registros con los datos proporcionados.")
-    return
-
-  st.dataframe(df_filtrado, use_container_width=True)
-
-  st.markdown("### 🖨️ Tickets Disponibles para Impresión / Descarga")
-
-  # Seleccionar un folio de los resultados filtrados
-  folios_encontrados = df_filtrado["Folio"].astype(str).tolist()
-  folio_seleccionado = st.selectbox(
-      "Seleccione el Folio del ticket:", options=folios_encontrados
-  )
-
-  if folio_seleccionado:
-    pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio_seleccionado}.pdf")
-
-    if os.path.exists(pdf_path):
-      st.success(f"Ticket encontrado para el Folio: {folio_seleccionado}")
-      with open(pdf_path, "rb") as f:
-        st.download_button(
-            label=f"📥 Descargar PDF del Ticket (Folio {folio_seleccionado})",
-            data=f,
-            file_name=f"ticket_{folio_seleccionado}.pdf",
-            mime="application/pdf",
+    if df_ventas is None or df_ventas.empty:
+        st.info(
+            "Aún no hay registros en las hojas de Google Sheets o no se pudo"
+            " establecer conexión."
         )
-    else:
-      st.error(
-          f"No se encontró el archivo PDF del ticket para el folio"
-          f" {folio_seleccionado} en `{FOLIOS_DIR}`."
-      )
+        return
+
+    # Filtros de búsqueda en la interfaz
+    col1, col2 = st.columns(2)
+
+    with col1:
+        grupos_disponibles = ["TODOS"] + sorted(
+            list(df_ventas["Grupo"].unique())
+        )
+        filtro_grupo = st.selectbox(
+            "Filtrar por Grupo:", options=grupos_disponibles
+        )
+
+    with col2:
+        busqueda_texto = st.text_input(
+            "Buscar por Alumno o Folio:",
+            placeholder="Ej. Juan o 20260928-IPE-001",
+        )
+
+    # Aplicar filtros
+    df_filtrado = df_ventas.copy()
+
+    if filtro_grupo != "TODOS":
+        df_filtrado = df_filtrado[df_filtrado["Grupo"] == filtro_grupo]
+
+    if busqueda_texto.strip():
+        texto = busqueda_texto.strip().lower()
+        df_filtrado = df_filtrado[
+            df_filtrado["Nombre de alumno"].str.lower().str.contains(texto)
+            | df_filtrado["Folio"].str.lower().str.contains(texto)
+        ]
+
+    st.markdown("---")
+    st.markdown(f"**Total de registros encontrados:** {len(df_filtrado)}")
+
+    # Mostrar tabla interactiva
+    st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+
+    # Opción para refrescar caché y recargar datos de la nube
+    if st.button("🔄 Actualizar Datos desde Google Sheets"):
+        st.cache_data.clear()
+        st.success("¡Datos actualizados correctamente!")
+        st.rerun()

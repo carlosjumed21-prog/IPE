@@ -5,7 +5,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 import streamlit as st
 
-EXCEL_PATH = "assets/alumnos primaria.xlsx"
+EXCEL_PATH = "assets/alumnosprimaria.xlsx"
 FOLIOS_DIR = "assets/folios"
 LOGO_PATH = "assets/logo.png"
 QR_PATH = "assets/qr_ticket.png"
@@ -28,21 +28,17 @@ def cargar_alumnos_por_pestanas():
     todas_hojas = xls.sheet_names
     lista_registros = []
 
-    # Iteramos sobre las hojas del 1 al 15 (o las que existan que coincidan o todas las disponibles)
+    # Iteramos sobre las hojas (grupos del 1 al 15)
     for hoja in todas_hojas:
-      # Leemos la hoja sin cabecera fija para manipular celdas por índice (base 0)
       df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
 
       # La columna 10 corresponde al índice 9 (A=0, B=1, ..., J=9)
       if df_hoja.shape[1] > 9:
-        # Extraemos desde la columna 10 (índice 9) hasta el final de las columnas
         df_columnas_interes = df_hoja.iloc[:, 9:]
 
-        # Recorremos todas las celdas de esas columnas para extraer nombres de alumnos válidos
         for col in df_columnas_interes.columns:
           for val in df_columnas_interes[col].dropna():
             nombre_limpio = str(val).strip()
-            # Filtramos valores vacíos o encabezados numéricos/raros si los hubiera
             if nombre_limpio and nombre_limpio.lower() not in [
                 "nan",
                 "nombre",
@@ -60,7 +56,6 @@ def cargar_alumnos_por_pestanas():
       )
 
     df_consolidado = pd.DataFrame(lista_registros)
-    # Eliminamos duplicados por si acaso aparecieran repetidos
     df_consolidado = df_consolidado.drop_duplicates(
         subset=["Alumno"]
     ).reset_index(drop=True)
@@ -193,7 +188,6 @@ def app():
         index=0 if lista_nombres else None,
     )
 
-    # Grupo: se llena automáticamente acorde a la hoja donde se localizó el alumno
     grupo_asignado = ""
     if nombre_alumno:
       fila = df_alumnos[df_alumnos["Alumno"] == nombre_alumno]

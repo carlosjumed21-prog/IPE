@@ -1,3 +1,4 @@
+import base64
 import os
 import pandas as pd
 from reportlab.lib.pagesizes import mm
@@ -16,7 +17,6 @@ def cargar_alumnos_por_grupos():
   """Carga los alumnos por cada hoja (grupo), leyendo desde la columna B (índice 1)
 
   a partir de la fila 10 (índice 9) hasta la última fila existente.
-  Retorna un diccionario donde la clave es el Grupo y el valor es la lista de alumnos.
   """
   if not os.path.exists(EXCEL_PATH):
     return None, f"No se encontró el archivo de Excel en la ruta: {EXCEL_PATH}"
@@ -27,12 +27,9 @@ def cargar_alumnos_por_grupos():
     datos_grupos = {}
 
     for hoja in todas_hojas:
-      # Leemos la hoja completa sin cabecera fija
       df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
 
-      # Validamos que la hoja tenga al menos la columna B (índice 1) y 10 filas (índice 9)
       if df_hoja.shape[0] > 9 and df_hoja.shape[1] > 1:
-        # Extraemos desde la fila 10 en adelante (índice 9:) de la columna B (índice 1)
         columna_b_desde_fila_10 = df_hoja.iloc[9:, 1]
 
         lista_alumnos = []
@@ -48,7 +45,6 @@ def cargar_alumnos_por_grupos():
             lista_alumnos.append(nombre_limpio)
 
         if lista_alumnos:
-          # Ordenamos alfabéticamente y eliminamos duplicados
           datos_grupos[str(hoja)] = sorted(list(set(lista_alumnos)))
 
     if not datos_grupos:
@@ -170,6 +166,18 @@ def generar_ticket_pdf(datos_compra, folio):
   return pdf_path
 
 
+def obtener_imagen_base64(ruta_imagen):
+  """Convierte una imagen local a base64 para incrustarla directamente en HTML."""
+  if os.path.exists(ruta_imagen):
+    with open(ruta_imagen, "rb") as f:
+      encoded = base64.b64encode(f.read()).decode("utf-8")
+      if ruta_imagen.endswith(".png"):
+        return f"data:image/png;base64,{encoded}"
+      elif ruta_imagen.endswith(".jpg") or ruta_imagen.endswith(".jpeg"):
+        return f"data:image/jpeg;base64,{encoded}"
+  return ""
+
+
 def app():
   st.subheader("📝 Registrar Nueva Compra")
 
@@ -179,7 +187,6 @@ def app():
     return
 
   with st.form("form_compra"):
-    # 1. Menú desplegable de Grupos (basado en los nombres de las hojas)
     lista_grupos = sorted(list(dic_grupos.keys()))
     grupo_seleccionado = st.selectbox(
         "Seleccione el Grupo:",
@@ -187,8 +194,9 @@ def app():
         index=0 if lista_grupos else None,
     )
 
-    # 2. Menú desplegable de Alumnos acorde al grupo seleccionado (Columna B desde fila 10)
-    lista_alumnos = dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
+    lista_alumnos = (
+        dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
+    )
     nombre_alumno = st.selectbox(
         "Nombre del alumno:",
         options=lista_alumnos,
@@ -244,13 +252,149 @@ def app():
         df_reg.to_csv(csv_path, index=False)
 
         pdf_path = generar_ticket_pdf(datos, folio)
-
         st.success(f"¡Compra realizada con éxito! Folio generado: {folio}")
         st.session_state["show_confirm"] = False
 
+        # Generar texto exacto para el ticket térmico con proporción conservada
+        lineas = []
+        lineas.append("================================")
+        lineas.append("    FOTOGRAFÍA NAVIDAD 2026   ")
+        lineas.append("   ¡Gracias por su compra!    ")
+        lineas.append("================================")
+        lineas.append("Ticket: #" + folio)
+        lineas.append("Fecha: " + datos["Fecha"])
+        lineas.append("Cliente: " + datos["Alumno"])
+        lineas.append("Grupo: " + datos["Grupo"])
+        lineas.append("--------------------------------")
+        lineas.append("CANT DESCRIPCIÓN          P.UNIT")
+        lineas.append("            TOTAL               ")
+        lineas.append("--------------------------------")
+
+        cant_str = "1".ljust(3)
+        desc_str = datos["Concepto"][:14].ljust(14)
+        precio_str = f"${datos['Importe']:.2f}".rjust(8)
+        total_str = f"${datos['Importe']:.2f}".rjust(12)
+
+        lineas.append(f"{cant_str} {desc_str} {precio_str}")
+        lineas.append(f"            {total_str}")
+        lineas.append("--------------------------------")
+
+        subtotal = datos["Importe"]
+        lineas.append(
+            f"SUBTOTAL:         " + f"${subtotal:.2f}".rjust(13)
+        )
+        lineas.append(
+            f"TOTAL A PAGAR:    " + f"${subtotal:.2f}".rjust(13)
+        )
+        lineas.append("================================")
+        lineas.append("   Atendió: " + datos["Atendio"])
+        lineas.append("  Conserve su ticket para       ")
+        lineas.append("   cualquier aclaración.        ")
+        lineas.append("       ¡Vuelva pronto!          ")
+        lineas.append("================================")
+
+        texto_ticket_html = "\n".join(lineas)
+
+        # Cargar logo y QR en base64 para mantener proporciones en pantalla e impresión
+        logo_base64 = obtener_imagen_base64(LOGO_PATH)
+        qr_base64 = obtener_imagen_base64(QR_PATH)
+
+        # Construir HTML interactivo con vista previa térmica
+        html_ticket_preview = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                <style>
+                  @media print {{
+                    html, body {{
+                      width: 80mm !important;
+                      max-width: 80mm !important;
+                      margin: 0 !important;
+                      padding: 0 !important;
+                    }}
+                    @page {{
+                      size: 80mm auto;
+                      margin: 0;
+                    }}
+                    .btn-print {{ display: none !important; }}
+                  }}
+                  body {{
+                    font-family: "Courier New", Courier, monospace;
+                    font-size: 13px;
+                    font-weight: bold;
+                    color: #000;
+                    width: 80mm;
+                    margin: 0 auto;
+                    padding: 5px;
+                    background: #fff;
+                    text-align: center;
+                  }}
+                  .logo-container img {{
+                    max-width: 45mm;
+                    height: auto;
+                    display: block;
+                    margin: 0 auto 5px auto;
+                  }}
+                  pre {{
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                    margin: 0 auto;
+                    padding: 0;
+                    font-family: inherit;
+                    font-size: inherit;
+                    font-weight: bold;
+                    line-height: 1.2;
+                    display: inline-block;
+                    text-align: left;
+                  }}
+                  .qr-container {{
+                    margin: 10px auto 0 auto;
+                    text-align: center;
+                  }}
+                  .qr-container img {{
+                    width: 25mm;
+                    height: 25mm;
+                    display: block;
+                    margin: 0 auto;
+                  }}
+                  .btn-print {{
+                    display: block;
+                    width: 100%;
+                    margin: 15px auto;
+                    background: #ff4b4b;
+                    color: #fff;
+                    padding: 10px;
+                    border: none;
+                    font-weight: bold;
+                    font-size: 14px;
+                    cursor: pointer;
+                    border-radius: 4px;
+                  }}
+                  .btn-print:hover {{
+                    background: #ff2222;
+                  }}
+                </style>
+                </head>
+                <body>
+                  <div class="logo-container">
+                    {f'<img src="{logo_base64}" alt="Logo">' if logo_base64 else ''}
+                  </div>
+                  <pre>{texto_ticket_html}</pre>
+                  <div class="qr-container">
+                    {f'<img src="{qr_base64}" alt="QR">' if qr_base64 else ''}
+                  </div>
+                  <button class="btn-print" onclick="window.print();">🖨️ Imprimir / Vista Previa</button>
+                </body>
+                </html>
+                """
+
+        st.markdown("### 🖨️ Vista Previa del Ticket Térmico")
+        st.components.v1.html(html_ticket_preview, height=550, scrolling=True)
+
+        # Botón adicional de descarga directa del PDF
         with open(pdf_path, "rb") as f:
           st.download_button(
-              label="🖨️ Imprimir Ticket Térmico (Descargar PDF)",
+              label="📥 Descargar PDF del Ticket",
               data=f,
               file_name=f"ticket_{folio}.pdf",
               mime="application/pdf",

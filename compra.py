@@ -1,7 +1,7 @@
 import base64
 from datetime import datetime
-import os
 from zoneinfo import ZoneInfo
+import os
 import pandas as pd
 from reportlab.lib.pagesizes import mm
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -194,15 +194,16 @@ def generar_ticket_pdf(datos_compra, folio):
   return pdf_path
 
 
-def obtener_imagen_base64(ruta_imagen):
-  if os.path.exists(ruta_imagen):
-    with open(ruta_imagen, "rb") as f:
-      encoded = base64.b64encode(f.read()).decode("utf-8")
-      if ruta_imagen.endswith(".png"):
-        return f"data:image/png;base64,{encoded}"
-      elif ruta_imagen.endswith(".jpg") or ruta_imagen.endswith(".jpeg"):
-        return f"data:image/jpeg;base64,{encoded}"
-  return ""
+def mostrar_pdf_en_pantalla(pdf_path):
+  """Muestra el PDF incrustado en Streamlit como previsualización."""
+  if os.path.exists(pdf_path):
+    with open(pdf_path, "rb") as f:
+      base64_pdf = base64.b64encode(f.read()).decode("utf-8")
+    pdf_display = (
+        f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%"'
+        ' height="600px" type="application/pdf"></iframe>'
+    )
+    st.markdown(pdf_display, unsafe_allow_html=True)
 
 
 def app():
@@ -304,143 +305,22 @@ def app():
         df_reg.to_csv(csv_path, index=False)
 
         pdf_path = generar_ticket_pdf(datos, folio)
-        st.success(f"¡Compra realizada con éxito! Folio generado: {folio}")
+        st.success(
+            f"¡Compra realizada con éxito! Folio generado: {folio} (PDF"
+            " generado en formato térmico exacto)"
+        )
         st.session_state["show_confirm"] = False
 
-        lineas = []
-        lineas.append("================================")
-        lineas.append("    FOTOGRAFÍA NAVIDAD 2026   ")
-        lineas.append("   ¡Gracias por su compra!    ")
-        lineas.append("================================")
-        lineas.append("Ticket: #" + folio)
-        lineas.append("Fecha: " + datos["Fecha"])
-        lineas.append("Cliente: " + datos["Alumno"])
-        lineas.append("Grupo: " + datos["Grupo"])
-        lineas.append("--------------------------------")
-        lineas.append("CANT DESCRIPCIÓN          P.UNIT")
-        lineas.append("            TOTAL               ")
-        lineas.append("--------------------------------")
+        st.markdown("### 🖨️ Vista Previa e Impresión del Ticket")
+        mostrar_pdf_en_pantalla(pdf_path)
 
-        cant_str = "1".ljust(3)
-        desc_str = datos["Concepto"][:14].ljust(14)
-        precio_str = f"${datos['Importe']:.2f}".rjust(8)
-        total_str = f"${datos['Importe']:.2f}".rjust(12)
-
-        lineas.append(f"{cant_str} {desc_str} {precio_str}")
-        lineas.append(f"            {total_str}")
-        lineas.append("--------------------------------")
-
-        subtotal = datos["Importe"]
-        lineas.append(
-            f"SUBTOTAL:         " + f"${subtotal:.2f}".rjust(13)
-        )
-        lineas.append(
-            f"TOTAL A PAGAR:    " + f"${subtotal:.2f}".rjust(13)
-        )
-        lineas.append("================================")
-        lineas.append("   Atendió: " + datos["Atendio"])
-        lineas.append("  Conserve su ticket para       ")
-        lineas.append("   cualquier aclaración.        ")
-        lineas.append("       ¡Vuelva pronto!          ")
-        lineas.append("================================")
-
-        texto_ticket_html = "\n".join(lineas)
-
-        logo_base64 = obtener_imagen_base64(LOGO_PATH)
-        qr_base64 = obtener_imagen_base64(QR_PATH)
-
-        html_ticket_preview = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                <style>
-                  @media print {{
-                    html, body {{
-                      width: 80mm !important;
-                      max-width: 80mm !important;
-                      margin: 0 !important;
-                      padding: 0 !important;
-                    }}
-                    @page {{
-                      size: 80mm 150mm;
-                      margin: 0mm;
-                    }}
-                    .btn-print {{ display: none !important; }}
-                  }}
-                  body {{
-                    font-family: "Courier New", Courier, monospace;
-                    font-size: 14px;
-                    font-weight: bold;
-                    color: #000;
-                    width: 80mm;
-                    margin: 0 auto;
-                    padding: 5px;
-                    background: #fff;
-                    text-align: center;
-                  }}
-                  .header-container {{
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    width: 100%;
-                    margin-bottom: 5px;
-                    padding: 0 5px;
-                    box-sizing: border-box;
-                  }}
-                  .logo-container img {{
-                    max-width: 24mm;
-                    height: auto;
-                    display: block;
-                  }}
-                  .qr-container img {{
-                    width: 22.5mm;
-                    height: 22.5mm;
-                    display: block;
-                  }}
-                  pre {{
-                    white-space: pre-wrap;
-                    word-wrap: break-word;
-                    margin: 0 auto;
-                    padding: 0;
-                    font-family: inherit;
-                    font-size: inherit;
-                    font-weight: bold;
-                    line-height: 1.2;
-                    display: inline-block;
-                    text-align: left;
-                  }}
-                  .btn-print {{
-                    display: block;
-                    width: 90%;
-                    margin: 15px auto;
-                    background: #000;
-                    color: #fff;
-                    padding: 10px;
-                    border: none;
-                    font-weight: bold;
-                    font-size: 14px;
-                    cursor: pointer;
-                    border-radius: 4px;
-                  }}
-                </style>
-                </head>
-                <body>
-                  <div class="header-container">
-                    <div class="logo-container">
-                      {f'<img src="{logo_base64}" alt="Logo">' if logo_base64 else ''}
-                    </div>
-                    <div class="qr-container">
-                      {f'<img src="{qr_base64}" alt="QR">' if qr_base64 else ''}
-                    </div>
-                  </div>
-                  <pre>{texto_ticket_html}</pre>
-                  <button class="btn-print" onclick="window.print();">🖨️ Imprimir Ticket</button>
-                </body>
-                </html>
-                """
-
-        st.markdown("### 🖨️ Vista Previa del Ticket Térmico")
-        st.components.v1.html(html_ticket_preview, height=600, scrolling=True)
+        with open(pdf_path, "rb") as f:
+          st.download_button(
+              label="📥 Descargar Archivo PDF del Ticket",
+              data=f,
+              file_name=f"ticket_{folio}.pdf",
+              mime="application/pdf",
+          )
 
     with col_no:
       if st.button("No, Regresar"):

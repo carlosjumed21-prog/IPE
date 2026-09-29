@@ -112,7 +112,7 @@ def obtener_siguiente_folio():
 
 
 def guardar_en_google_sheets(datos):
-    """Sincroniza la venta llenando estrictamente la siguiente celda vacía dentro de la tabla de la hoja."""
+    """Sincroniza la venta llenando estrictamente la siguiente celda libre dentro de la tabla (desde fila 2 en adelante)."""
     try:
         scope = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -130,18 +130,22 @@ def guardar_en_google_sheets(datos):
         except Exception:
             worksheet = sh.sheet1
 
-        # Obtenemos todos los valores de la columna A para encontrar la última fila real con datos de la tabla
-        columna_a = worksheet.col_values(1)
-        
-        # Filtramos elementos vacíos reales al final para hallar la última fila válida de la tabla
-        ultima_fila_real = 1
-        for idx, val in enumerate(columna_a):
-            if str(val).strip() != "":
-                ultima_fila_real = idx + 1
+        # Obtenemos todas las filas actuales de la hoja
+        todas_las_filas = worksheet.get_all_values()
 
-        # Si la tabla solo tiene el encabezado en la fila 1, la siguiente fila es la 2.
-        siguiente_fila = max(2, ultima_fila_real + 1)
-        siguiente_id = siguiente_fila - 1  # ID consecutivo exacto basado en la fila
+        # Determinamos la última fila que realmente contiene datos en la Columna A (#)
+        ultima_fila_con_datos = 1
+        for idx, fila in enumerate(todas_las_filas):
+            if len(fila) > 0 and str(fila[0]).strip() != "":
+                # Verificamos si no es el encabezado buscando si es un número entero
+                if idx > 0:
+                    ultima_fila_con_datos = idx + 1
+                elif idx == 0 and str(fila[0]).lower() not in ["#", "id", "número", "numero"]:
+                    ultima_fila_con_datos = 1
+
+        # Si no hay registros de datos, empezamos en la fila 2. Si ya hay, sumamos 1.
+        siguiente_fila = max(2, ultima_fila_con_datos + 1)
+        siguiente_id = siguiente_fila - 1
 
         # Orden estricto: Col A (#), Col B (Folio), Col C (Nombre), Col D (Fecha), Col E (Importe), Col F (Atendio)
         nueva_fila = [
@@ -279,10 +283,23 @@ def obtener_imagen_base64(ruta_imagen):
 
 
 def app():
-    st.subheader("📝 Registrar Nueva Compra")
+    st.subheader("📝 Gestión de Ventas y Comprobantes")
 
+    # Inicializar variables de estado para navegación por secciones
+    if "seccion_actual" not in st.session_state:
+        st.session_state["seccion_actual"] = "1. Registrar Compra"
     if "is_processing" not in st.session_state:
         st.session_state["is_processing"] = False
+    if "ultima_venta" not in st.session_state:
+        st.session_state["ultima_venta"] = None
+
+    # Menú de navegación superior en dos secciones
+    seccion = st.radio(
+        "Menú de Navegación:",
+        options=["1. Registrar Compra", "2. Comprobante de Venta"],
+        key="menu_navegacion_ventas",
+        horizontal=True,
+    )
 
     dic_grupos, error = cargar_alumnos_por_grupos()
     if error:
@@ -291,267 +308,305 @@ def app():
 
     lista_grupos = sorted(list(dic_grupos.keys()))
 
-    def actualizar_grupo():
-        st.session_state["alumno_seleccionado"] = None
+    # ================= SECCIÓN 1: REGISTRAR COMPRA =================
+    if seccion == "1. Registrar Compra":
+        st.markdown("### 🛒 Capturar Nueva Venta")
 
-    grupo_seleccionado = st.selectbox(
-        "Seleccione el Grupo:",
-        options=lista_grupos,
-        index=None,
-        placeholder="Seleccione un grupo...",
-        key="grupo_seleccionado",
-        on_change=actualizar_grupo,
-    )
+        def actualizar_grupo():
+            st.session_state["alumno_seleccionado"] = None
 
-    lista_alumnos = (
-        dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
-    )
-    nombre_alumno = st.selectbox(
-        "Nombre del alumno:",
-        options=lista_alumnos,
-        index=None,
-        placeholder=(
-            "Seleccione primero un grupo..."
-            if not grupo_seleccionado
-            else "Seleccione un alumno..."
-        ),
-        key="alumno_seleccionado",
-    )
-
-    with st.form("form_compra_detalles"):
-        st.markdown("---")
-        concepto = st.text_input(
-            "Concepto:", value="Fotografía Navidad 2026", disabled=True
-        )
-        importe = st.number_input(
-            "Importe ($):", value=350.0, format="%.2f", disabled=True
-        )
-
-        atendio = st.selectbox(
-            "Quién atendió:",
-            options=[
-                "Victoria Garcia Valencia",
-                "Jose Francisco Resendiz",
-                "Grecia Ramirez Arenas",
-            ],
+        grupo_seleccionado = st.selectbox(
+            "Seleccione el Grupo:",
+            options=lista_grupos,
             index=None,
-            placeholder="Seleccione quién atiende...",
+            placeholder="Seleccione un grupo...",
+            key="grupo_seleccionado",
+            on_change=actualizar_grupo,
         )
 
-        submitted = st.form_submit_button("Confirmar Compra")
+        lista_alumnos = (
+            dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
+        )
+        nombre_alumno = st.selectbox(
+            "Nombre del alumno:",
+            options=lista_alumnos,
+            index=None,
+            placeholder=(
+                "Seleccione primero un grupo..."
+                if not grupo_seleccionado
+                else "Seleccione un alumno..."
+            ),
+            key="alumno_seleccionado",
+        )
 
-    if submitted:
-        if not grupo_seleccionado:
-            st.warning("⚠️ Por favor seleccione un grupo.")
-        elif not nombre_alumno:
-            st.warning("⚠️ Por favor seleccione un alumno.")
-        elif not atendio:
-            st.warning("⚠️ Por favor seleccione quién atiende.")
-        else:
-            fecha_hora_actual = obtener_fecha_hora_actual()
-            st.session_state["pending_compra"] = {
-                "Alumno": nombre_alumno,
-                "Grupo": grupo_seleccionado,
-                "Concepto": "Fotografía Navidad 2026",
-                "Importe": 350.0,
-                "Atendio": atendio,
-                "Fecha": fecha_hora_actual,
-            }
-            st.session_state["show_confirm"] = True
+        with st.form("form_compra_detalles"):
+            st.markdown("---")
+            concepto = st.text_input(
+                "Concepto:", value="Fotografía Navidad 2026", disabled=True
+            )
+            importe = st.number_input(
+                "Importe ($):", value=350.0, format="%.2f", disabled=True
+            )
 
-    if st.session_state.get("show_confirm", False):
-        st.warning("⚠️ ¿Está seguro de confirmar y registrar esta compra?")
-        col_si, col_no = st.columns(2)
+            atendio = st.selectbox(
+                "Quién atendió:",
+                options=[
+                    "Victoria Garcia Valencia",
+                    "Jose Francisco Resendiz",
+                    "Grecia Ramirez Arenas",
+                ],
+                index=None,
+                placeholder="Seleccione quién atiende...",
+            )
 
-        with col_si:
-            # Controlamos el bloqueo del botón para que no se presione dos veces
-            if st.button(
-                "Sí, Confirmar",
-                disabled=st.session_state["is_processing"],
-                key="btn_confirmar_venta",
-            ):
-                st.session_state["is_processing"] = True
-                datos = st.session_state["pending_compra"]
+            submitted = st.form_submit_button("Confirmar Compra")
 
-                folio = obtener_siguiente_folio()
-                datos["Folio"] = folio
+        if submitted:
+            if not grupo_seleccionado:
+                st.warning("⚠️ Por favor seleccione un grupo.")
+            elif not nombre_alumno:
+                st.warning("⚠️ Por favor seleccione un alumno.")
+            elif not atendio:
+                st.warning("⚠️ Por favor seleccione quién atiende.")
+            else:
+                fecha_hora_actual = obtener_fecha_hora_actual()
+                st.session_state["pending_compra"] = {
+                    "Alumno": nombre_alumno,
+                    "Grupo": grupo_seleccionado,
+                    "Concepto": "Fotografía Navidad 2026",
+                    "Importe": 350.0,
+                    "Atendio": atendio,
+                    "Fecha": fecha_hora_actual,
+                }
+                st.session_state["show_confirm"] = True
 
-                # 1. Guardar localmente en CSV como respaldo
-                os.makedirs("assets", exist_ok=True)
-                if os.path.exists(CSV_PATH):
-                    df_reg = pd.read_csv(CSV_PATH)
-                    df_reg = pd.concat(
-                        [df_reg, pd.DataFrame([datos])], ignore_index=True
-                    )
-                else:
-                    df_reg = pd.DataFrame([datos])
-                df_reg.to_csv(CSV_PATH, index=False)
+        if st.session_state.get("show_confirm", False):
+            st.warning("⚠️ ¿Está seguro de confirmar y registrar esta compra?")
+            col_si, col_no = st.columns(2)
 
-                # 2. Sincronizar en Google Sheets oficial
-                sheet_ok = guardar_en_google_sheets(datos)
+            with col_si:
+                if st.button(
+                    "Sí, Confirmar",
+                    disabled=st.session_state["is_processing"],
+                    key="btn_confirmar_venta",
+                ):
+                    st.session_state["is_processing"] = True
+                    datos = st.session_state["pending_compra"]
 
-                # Ventana emergente con los siguientes pasos y éxito
-                st.success(
-                    f"🎉 ¡Venta confirmada con éxito! Folio asignado: #{folio}\n\n"
-                    f"{'✅ Sincronizado correctamente en Google Sheets.' if sheet_ok else '⚠️ Guardado localmente (error de red con Google Sheets).'}"
-                )
+                    folio = obtener_siguiente_folio()
+                    datos["Folio"] = folio
 
-                pdf_path = generar_ticket_pdf(datos, folio)
+                    # 1. Resguardo local en CSV
+                    os.makedirs("assets", exist_ok=True)
+                    if os.path.exists(CSV_PATH):
+                        df_reg = pd.read_csv(CSV_PATH)
+                        df_reg = pd.concat(
+                            [df_reg, pd.DataFrame([datos])], ignore_index=True
+                        )
+                    else:
+                        df_reg = pd.DataFrame([datos])
+                    df_reg.to_csv(CSV_PATH, index=False)
 
-                lineas = []
-                lineas.append("==================")
-                lineas.append("   FOTOGRAFÍA   ")
-                lineas.append("  NAVIDAD 2026  ")
-                lineas.append("==================")
-                lineas.append("Ticket: #" + folio)
-                lineas.append("F/H: " + datos["Fecha"])
-                lineas.append("Cliente:")
-                lineas.append(datos["Alumno"])
-                lineas.append("Grupo: " + datos["Grupo"])
-                lineas.append("------------------")
-                lineas.append("CANT DESCRIPCIÓN  P.UNIT")
-                lineas.append("------------------")
+                    # 2. Sincronización exacta en Google Sheets
+                    sheet_ok = guardar_en_google_sheets(datos)
+                    if sheet_ok:
+                        st.success(
+                            f"🎉 ¡Compra registrada con éxito en Google Sheets! Folio: #{folio}"
+                        )
+                    else:
+                        st.warning(
+                            f"⚠️ Guardado localmente, pero error al sincronizar con Google Sheets. Folio: #{folio}"
+                        )
 
-                cant_str = "1".ljust(3)
-                desc_str = datos["Concepto"][:10].ljust(10)
-                precio_str = f"${datos['Importe']:.2f}".rjust(6)
+                    # Guardamos los datos de la última venta para mostrar el comprobante
+                    st.session_state["ultima_venta"] = datos
+                    st.session_state["show_confirm"] = False
+                    st.session_state["is_processing"] = False
 
-                lineas.append(f"{cant_str} {desc_str} {precio_str}")
-                lineas.append("------------------")
+                    # Cambiamos automáticamente a la sección 2 (Comprobante)
+                    st.success("Redirigiendo al comprobante de venta...")
+                    st.rerun()
 
-                subtotal = datos["Importe"]
-                lineas.append(
-                    f"TOTAL: " + f"${subtotal:.2f}".rjust(11)
-                )
-                lineas.append("==================")
-                lineas.append("Atendió:")
-                lineas.append(datos["Atendio"])
-                lineas.append("Conserve su ticket")
-                lineas.append("para cualquier")
-                lineas.append("aclaración.")
-                lineas.append("¡Vuelva pronto!")
-                lineas.append("==================")
+            with col_no:
+                if st.button("No, Regresar", disabled=st.session_state["is_processing"]):
+                    st.info("Captura cancelada.")
+                    st.session_state["show_confirm"] = False
+                    st.rerun()
 
-                texto_ticket_html = "\n".join(lineas)
+    # ================= SECCIÓN 2: COMPROBANTE DE VENTA =================
+    elif seccion == "2. Comprobante de Venta":
+        st.markdown("### 🖨️ Comprobante y Vista Previa del Ticket")
 
-                logo_base64 = obtener_imagen_base64(LOGO_PATH)
-                qr_base64 = obtener_imagen_base64(QR_PATH)
+        datos_venta = st.session_state.get("ultima_venta", None)
 
-                html_ticket_preview = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                <style>
-                  @media print {{
-                    html, body {{
-                      width: 48mm !important;
-                      max-width: 48mm !important;
-                      margin: 0 !important;
-                      padding: 0 !important;
-                      background: #fff !important;
-                    }}
-                    @page {{
-                      size: 48mm 250mm;
-                      margin: 0mm;
-                    }}
-                    .btn-print {{ display: none !important; }}
-                    .ticket-card {{ box-shadow: none !important; padding: 0 !important; width: 48mm !important; }}
-                  }}
-                  body {{
-                    font-family: "Courier New", Courier, monospace;
-                    background: #f8f9fa;
-                    margin: 0;
-                    padding: 5px;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                  }}
-                  .ticket-card {{
-                    background: #ffffff;
-                    width: 48mm;
-                    padding: 6px;
-                    box-sizing: border-box;
-                    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-                    border-radius: 4px;
-                    text-align: center;
-                  }}
-                  .logo-container {{
-                    margin-bottom: 6px;
-                    display: flex;
-                    justify-content: center;
-                  }}
-                  .logo-container img {{
-                    max-width: 18mm;
-                    height: auto;
-                    display: block;
-                  }}
-                  .qr-container {{
-                    margin-top: 8px;
-                    margin-bottom: 4px;
-                    display: flex;
-                    justify-content: center;
-                  }}
-                  .qr-container img {{
-                    width: 18mm;
-                    height: 18mm;
-                    display: block;
-                  }}
-                  pre {{
-                    white-space: pre-wrap;
-                    word-wrap: break-word;
-                    margin: 0 auto;
-                    padding: 0;
-                    font-family: inherit;
-                    font-size: 10.5px;
-                    font-weight: bold;
-                    line-height: 1.2;
-                    display: inline-block;
-                    text-align: left;
-                    color: #000;
-                  }}
-                  .btn-print {{
-                    display: block;
-                    width: 100%;
-                    margin-top: 10px;
-                    background: #000;
-                    color: #fff;
-                    padding: 8px;
-                    border: none;
-                    font-weight: bold;
-                    font-size: 12px;
-                    cursor: pointer;
-                    border-radius: 4px;
-                    text-align: center;
-                  }}
-                  .btn-print:hover {{
-                    background: #333;
-                  }}
-                </style>
-                </head>
-                <body>
-                  <div class="ticket-card">
-                    <div class="logo-container">
-                      {f'<img src="{logo_base64}" alt="Logo">' if logo_base64 else ''}
-                    </div>
-                    <pre>{texto_ticket_html}</pre>
-                    <div class="qr-container">
-                      {f'<img src="{qr_base64}" alt="QR">' if qr_base64 else ''}
-                    </div>
-                    <button class="btn-print" onclick="window.print();">🖨️ Imprimir Ticket</button>
-                  </div>
-                </body>
-                </html>
-                """
+        if not datos_venta:
+            st.info(
+                "No hay ninguna venta registrada recientemente en esta sesión."
+                " Por favor registre una compra en la sección 1."
+            )
+            return
 
-                st.markdown("### 🖨️ Vista Previa del Ticket (48x250 mm)")
-                st.components.v1.html(html_ticket_preview, height=620, scrolling=True)
+        folio = datos_venta["Folio"]
+        pdf_path = generar_ticket_pdf(datos_venta, folio)
 
-                # Limpiamos estados de confirmación
-                st.session_state["show_confirm"] = False
-                st.session_state["is_processing"] = False
+        # Construcción del texto del ticket térmico
+        lineas = []
+        lineas.append("==================")
+        lineas.append("   FOTOGRAFÍA   ")
+        lineas.append("  NAVIDAD 2026  ")
+        lineas.append("==================")
+        lineas.append("Ticket: #" + folio)
+        lineas.append("F/H: " + datos_venta["Fecha"])
+        lineas.append("Cliente:")
+        lineas.append(datos_venta["Alumno"])
+        lineas.append("Grupo: " + datos_venta["Grupo"])
+        lineas.append("------------------")
+        lineas.append("CANT DESCRIPCIÓN  P.UNIT")
+        lineas.append("------------------")
 
-        with col_no:
-            if st.button("No, Regresar", disabled=st.session_state["is_processing"]):
-                st.info("Captura cancelada.")
-                st.session_state["show_confirm"] = False
+        cant_str = "1".ljust(3)
+        desc_str = datos_venta["Concepto"][:10].ljust(10)
+        precio_str = f"${datos_venta['Importe']:.2f}".rjust(6)
+
+        lineas.append(f"{cant_str} {desc_str} {precio_str}")
+        lineas.append("------------------")
+
+        subtotal = datos_venta["Importe"]
+        lineas.append(f"TOTAL: " + f"${subtotal:.2f}".rjust(11))
+        lineas.append("==================")
+        lineas.append("Atendió:")
+        lineas.append(datos_venta["Atendio"])
+        lineas.append("Conserve su ticket")
+        lineas.append("para cualquier")
+        lineas.append("aclaración.")
+        lineas.append("¡Vuelva pronto!")
+        lineas.append("==================")
+
+        texto_ticket_html = "\n".join(lineas)
+        logo_base64 = obtener_imagen_base64(LOGO_PATH)
+        qr_base64 = obtener_imagen_base64(QR_PATH)
+
+        html_ticket_preview = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+          @media print {{
+            html, body {{
+              width: 48mm !important;
+              max-width: 48mm !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #fff !important;
+            }}
+            @page {{
+              size: 48mm 250mm;
+              margin: 0mm;
+            }}
+            .btn-print {{ display: none !important; }}
+            .ticket-card {{ box-shadow: none !important; padding: 0 !important; width: 48mm !important; }}
+          }}
+          body {{
+            font-family: "Courier New", Courier, monospace;
+            background: #f8f9fa;
+            margin: 0;
+            padding: 5px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+          }}
+          .ticket-card {{
+            background: #ffffff;
+            width: 48mm;
+            padding: 6px;
+            box-sizing: border-box;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border-radius: 4px;
+            text-align: center;
+          }}
+          .logo-container {{
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: center;
+          }}
+          .logo-container img {{
+            max-width: 18mm;
+            height: auto;
+            display: block;
+          }}
+          .qr-container {{
+            margin-top: 8px;
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: center;
+          }}
+          .qr-container img {{
+            width: 18mm;
+            height: 18mm;
+            display: block;
+          }}
+          pre {{
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin: 0 auto;
+            padding: 0;
+            font-family: inherit;
+            font-size: 10.5px;
+            font-weight: bold;
+            line-height: 1.2;
+            display: inline-block;
+            text-align: left;
+            color: #000;
+          }}
+          .btn-print {{
+            display: block;
+            width: 100%;
+            margin-top: 10px;
+            background: #000;
+            color: #fff;
+            padding: 8px;
+            border: none;
+            font-weight: bold;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            text-align: center;
+          }}
+          .btn-print:hover {{
+            background: #333;
+          }}
+        </style>
+        </head>
+        <body>
+          <div class="ticket-card">
+            <div class="logo-container">
+              {f'<img src="{logo_base64}" alt="Logo">' if logo_base64 else ''}
+            </div>
+            <pre>{texto_ticket_html}</pre>
+            <div class="qr-container">
+              {f'<img src="{qr_base64}" alt="QR">' if qr_base64 else ''}
+            </div>
+            <button class="btn-print" onclick="window.print();">🖨️ Imprimir Ticket</button>
+          </div>
+        </body>
+        </html>
+        """
+
+        st.components.v1.html(html_ticket_preview, height=620, scrolling=True)
+
+        st.markdown("---")
+        # Botones de navegación solicitados
+        col_ant, col_sig, col_nuevo = st.columns(3)
+
+        with col_ant:
+            if st.button("⬅️ Anterior"):
+                st.info("Navegación al registro anterior.")
+
+        with col_sig:
+            if st.button("Siguiente ➡️"):
+                st.info("Navegación al siguiente registro.")
+
+        with col_nuevo:
+            if st.button("➕ Registrar otro alumno"):
+                st.session_state["ultima_venta"] = None
                 st.rerun()

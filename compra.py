@@ -112,7 +112,7 @@ def obtener_siguiente_folio():
 
 
 def guardar_en_google_sheets(datos):
-    """Sincroniza la venta en la pestaña correspondiente del Google Sheet usando credenciales de st.secrets."""
+    """Sincroniza la venta en la pestaña correspondiente del Google Sheet respetando el orden de columnas exacto."""
     try:
         scope = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -133,12 +133,14 @@ def guardar_en_google_sheets(datos):
         existing_data = worksheet.get_all_values()
         siguiente_id = len(existing_data) if len(existing_data) > 0 else 1
 
+        # Orden estricto solicitado: # (Col A), Folio (Col B), Nombre (Col C), Fecha (Col D), Importe (Col E), Atendio (Col F)
         nueva_fila = [
             siguiente_id,
-            datos["Alumno"],
             datos["Folio"],
+            datos["Alumno"],
             datos["Fecha"],
             datos["Importe"],
+            datos["Atendio"],
         ]
         worksheet.append_row(nueva_fila)
         return True

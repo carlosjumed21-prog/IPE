@@ -1,7 +1,7 @@
 import base64
 from datetime import datetime
-import os
 from zoneinfo import ZoneInfo
+import os
 import pandas as pd
 from reportlab.lib.pagesizes import mm
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -194,6 +194,21 @@ def generar_ticket_pdf(datos_compra, folio):
   return pdf_path
 
 
+def mostrar_visor_pdf(pdf_path):
+  """Muestra el visor incrustado del PDF en pantalla para impresión directa sin descarga forzada."""
+  if os.path.exists(pdf_path):
+    with open(pdf_path, "rb") as f:
+      base64_pdf = base64.b64encode(f.read()).decode("utf-8")
+
+    # Incrustamos usando embed con controles integrados de impresión del navegador
+    visor_html = f"""
+        <div style="display: flex; justify-content: center; background-color: #f0f2f6; padding: 10px; border-radius: 8px;">
+            <embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="550px" type="application/pdf">
+        </div>
+        """
+    st.markdown(visor_html, unsafe_allow_html=True)
+
+
 def app():
   st.subheader("📝 Registrar Nueva Compra")
 
@@ -294,24 +309,16 @@ def app():
 
         pdf_path = generar_ticket_pdf(datos, folio)
         st.success(
-            f"¡Compra realizada con éxito! Folio generado: {folio} (Ticket PDF"
-            " listo para impresión)"
+            f"¡Compra realizada con éxito! Folio generado: {folio} (Ticket listo"
+            " para impresión)"
         )
         st.session_state["show_confirm"] = False
 
-        st.markdown("### 🖨️ Imprimir Ticket Generado")
-        st.info(
-            "Haz clic en el botón de abajo para descargar y abrir tu ticket"
-            " térmico con las dimensiones exactas."
+        st.markdown(
+            "### 🖨️ Vista Previa del Ticket (Usa el ícono de impresora en la"
+            " esquina superior derecha del visor)"
         )
-
-        with open(pdf_path, "rb") as f:
-          st.download_button(
-              label="🖨️ Descargar e Imprimir Ticket PDF",
-              data=f,
-              file_name=f"ticket_{folio}.pdf",
-              mime="application/pdf",
-          )
+        mostrar_visor_pdf(pdf_path)
 
     with col_no:
       if st.button("No, Regresar"):

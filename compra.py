@@ -114,7 +114,6 @@ def generar_ticket_pdf(datos_compra, folio):
       textColor="#000000",
   )
 
-  # Cabecera superior: Logo (reducido 25%) y QR (aumentado 25%)
   elementos_cabecera = []
   if os.path.exists(LOGO_PATH):
     try:
@@ -194,19 +193,15 @@ def generar_ticket_pdf(datos_compra, folio):
   return pdf_path
 
 
-def mostrar_visor_pdf(pdf_path):
-  """Muestra el visor incrustado del PDF en pantalla para impresión directa sin descarga forzada."""
-  if os.path.exists(pdf_path):
-    with open(pdf_path, "rb") as f:
-      base64_pdf = base64.b64encode(f.read()).decode("utf-8")
-
-    # Incrustamos usando embed con controles integrados de impresión del navegador
-    visor_html = f"""
-        <div style="display: flex; justify-content: center; background-color: #f0f2f6; padding: 10px; border-radius: 8px;">
-            <embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="550px" type="application/pdf">
-        </div>
-        """
-    st.markdown(visor_html, unsafe_allow_html=True)
+def obtener_imagen_base64(ruta_imagen):
+  if os.path.exists(ruta_imagen):
+    with open(ruta_imagen, "rb") as f:
+      encoded = base64.b64encode(f.read()).decode("utf-8")
+      if ruta_imagen.endswith(".png"):
+        return f"data:image/png;base64,{encoded}"
+      elif ruta_imagen.endswith(".jpg") or ruta_imagen.endswith(".jpeg"):
+        return f"data:image/jpeg;base64,{encoded}"
+  return ""
 
 
 def app():
@@ -308,17 +303,161 @@ def app():
         df_reg.to_csv(csv_path, index=False)
 
         pdf_path = generar_ticket_pdf(datos, folio)
-        st.success(
-            f"¡Compra realizada con éxito! Folio generado: {folio} (Ticket listo"
-            " para impresión)"
-        )
+        st.success(f"¡Compra realizada con éxito! Folio generado: {folio}")
         st.session_state["show_confirm"] = False
 
-        st.markdown(
-            "### 🖨️ Vista Previa del Ticket (Usa el ícono de impresora en la"
-            " esquina superior derecha del visor)"
+        # Construcción del texto del ticket para visualización HTML
+        lineas = []
+        lineas.append("================================")
+        lineas.append("    FOTOGRAFÍA NAVIDAD 2026   ")
+        lineas.append("   ¡Gracias por su compra!    ")
+        lineas.append("================================")
+        lineas.append("Ticket: #" + folio)
+        lineas.append("Fecha: " + datos["Fecha"])
+        lineas.append("Cliente: " + datos["Alumno"])
+        lineas.append("Grupo: " + datos["Grupo"])
+        lineas.append("--------------------------------")
+        lineas.append("CANT DESCRIPCIÓN          P.UNIT")
+        lineas.append("            TOTAL               ")
+        lineas.append("--------------------------------")
+
+        cant_str = "1".ljust(3)
+        desc_str = datos["Concepto"][:14].ljust(14)
+        precio_str = f"${datos['Importe']:.2f}".rjust(8)
+        total_str = f"${datos['Importe']:.2f}".rjust(12)
+
+        lineas.append(f"{cant_str} {desc_str} {precio_str}")
+        lineas.append(f"            {total_str}")
+        lineas.append("--------------------------------")
+
+        subtotal = datos["Importe"]
+        lineas.append(
+            f"SUBTOTAL:         " + f"${subtotal:.2f}".rjust(13)
         )
-        mostrar_visor_pdf(pdf_path)
+        lineas.append(
+            f"TOTAL A PAGAR:    " + f"${subtotal:.2f}".rjust(13)
+        )
+        lineas.append("================================")
+        lineas.append("   Atendió: " + datos["Atendio"])
+        lineas.append("  Conserve su ticket para       ")
+        lineas.append("   cualquier aclaración.        ")
+        lineas.append("       ¡Vuelva pronto!          ")
+        lineas.append("================================")
+
+        texto_ticket_html = "\n".join(lineas)
+
+        logo_base64 = obtener_imagen_base64(LOGO_PATH)
+        qr_base64 = obtener_imagen_base64(QR_PATH)
+
+        # Vista previa estilizada tipo tarjeta térmica con botón directo de impresión
+        html_ticket_preview = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                <style>
+                  @media print {{
+                    html, body {{
+                      width: 80mm !important;
+                      max-width: 80mm !important;
+                      margin: 0 !important;
+                      padding: 0 !important;
+                      background: #fff !important;
+                    }}
+                    @page {{
+                      size: 80mm auto;
+                      margin: 0mm;
+                    }}
+                    .btn-print {{ display: none !important; }}
+                    .ticket-card {{ box-shadow: none !important; padding: 0 !important; }}
+                  }}
+                  body {{
+                    font-family: "Courier New", Courier, monospace;
+                    background: #f8f9fa;
+                    margin: 0;
+                    padding: 10px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                  }}
+                  .ticket-card {{
+                    background: #ffffff;
+                    width: 80mm;
+                    padding: 10px;
+                    box-sizing: border-box;
+                    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+                    border-radius: 6px;
+                    text-align: center;
+                  }}
+                  .header-container {{
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    width: 100%;
+                    margin-bottom: 5px;
+                    padding: 0 5px;
+                    box-sizing: border-box;
+                  }}
+                  .logo-container img {{
+                    max-width: 24mm;
+                    height: auto;
+                    display: block;
+                  }}
+                  .qr-container img {{
+                    width: 22.5mm;
+                    height: 22.5mm;
+                    display: block;
+                  }}
+                  pre {{
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                    margin: 0 auto;
+                    padding: 0;
+                    font-family: inherit;
+                    font-size: 13px;
+                    font-weight: bold;
+                    line-height: 1.2;
+                    display: inline-block;
+                    text-align: left;
+                    color: #000;
+                  }}
+                  .btn-print {{
+                    display: block;
+                    width: 100%;
+                    margin-top: 15px;
+                    background: #000;
+                    color: #fff;
+                    padding: 12px;
+                    border: none;
+                    font-weight: bold;
+                    font-size: 15px;
+                    cursor: pointer;
+                    border-radius: 4px;
+                    text-align: center;
+                  }}
+                  .btn-print:hover {{
+                    background: #333;
+                  }}
+                </style>
+                </head>
+                <body>
+                  <div class="ticket-card">
+                    <div class="header-container">
+                      <div class="logo-container">
+                        {f'<img src="{logo_base64}" alt="Logo">' if logo_base64 else ''}
+                      </div>
+                      <div class="qr-container">
+                        {f'<img src="{qr_base64}" alt="QR">' if qr_base64 else ''}
+                      </div>
+                    </div>
+                    <pre>{texto_ticket_html}</pre>
+                    <button class="btn-print" onclick="window.print();">🖨️ Imprimir Ticket</button>
+                  </div>
+                </body>
+                </html>
+                """
+
+        st.markdown("### 🖨️ Vista Previa del Ticket")
+        st.components.v1.html(html_ticket_preview, height=620, scrolling=True)
 
     with col_no:
       if st.button("No, Regresar"):

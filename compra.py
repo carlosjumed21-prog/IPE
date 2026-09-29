@@ -3,7 +3,7 @@ import os
 import pandas as pd
 from reportlab.lib.pagesizes import mm
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 import streamlit as st
 
 EXCEL_PATH = "assets/alumnosprimaria.xlsx"
@@ -31,7 +31,6 @@ def cargar_alumnos_por_grupos():
       df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
 
       if df_hoja.shape[0] >= 10 and df_hoja.shape[1] > 1:
-        # Columna B (índice 1), desde la fila 10 (índice 9) en adelante
         columna_b = df_hoja.iloc[9:, 1]
 
         lista_alumnos = []
@@ -75,8 +74,8 @@ def generar_ticket_pdf(datos_compra, folio):
   doc = SimpleDocTemplate(
       pdf_path,
       pagesize=(ancho_ticket, alto_ticket),
-      rightMargin=6 * mm,
-      leftMargin=6 * mm,
+      rightMargin=4 * mm,
+      leftMargin=4 * mm,
       topMargin=6 * mm,
       bottomMargin=6 * mm,
   )
@@ -88,8 +87,8 @@ def generar_ticket_pdf(datos_compra, folio):
       "TicketCentro",
       parent=styles["Normal"],
       fontName="Courier-Bold",
-      fontSize=8.5,
-      leading=11,
+      fontSize=9.5,  # Letra un poco más grande
+      leading=12,
       alignment=1,
       textColor="#000000",
   )
@@ -98,21 +97,43 @@ def generar_ticket_pdf(datos_compra, folio):
       "TicketIzquierda",
       parent=styles["Normal"],
       fontName="Courier-Bold",
-      fontSize=8.5,
-      leading=11,
+      fontSize=9.5,  # Letra un poco más grande
+      leading=12,
       alignment=0,
       textColor="#000000",
   )
 
-  # Logo en PDF reducido un 50%
+  # Cabecera superior: Logo y QR lado a lado en el PDF
+  elementos_cabecera = []
   if os.path.exists(LOGO_PATH):
     try:
-      img_logo = Image(LOGO_PATH, width=22 * mm, height=8 * mm)
+      img_logo = Image(LOGO_PATH, width=24 * mm, height=9 * mm)
       img_logo.hAlign = "CENTER"
-      story.append(img_logo)
-      story.append(Spacer(1, 4))
+      elementos_cabecera.append(img_logo)
     except Exception:
-      pass
+      elementos_cabecera.append("")
+  else:
+    elementos_cabecera.append("")
+
+  if os.path.exists(QR_PATH):
+    try:
+      img_qr = Image(QR_PATH, width=16 * mm, height=16 * mm)
+      img_qr.hAlign = "CENTER"
+      elementos_cabecera.append(img_qr)
+    except Exception:
+      elementos_cabecera.append("")
+  else:
+    elementos_cabecera.append("")
+
+  tabla_cabecera = Table([elementos_cabecera], colWidths=[42 * mm, 26 * mm])
+  tabla_cabecera.setStyle(
+      TableStyle([
+          ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+          ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+      ])
+  )
+  story.append(tabla_cabecera)
+  story.append(Spacer(1, 6))
 
   story.append(Paragraph("================================", style_mono_centro))
   story.append(Paragraph("    FOTOGRAFÍA NAVIDAD 2026   ", style_mono_centro))
@@ -157,15 +178,6 @@ def generar_ticket_pdf(datos_compra, folio):
   story.append(Paragraph("   cualquier aclaración.        ", style_mono_centro))
   story.append(Paragraph("       ¡Vuelva pronto!          ", style_mono_centro))
   story.append(Paragraph("================================", style_mono_centro))
-  story.append(Spacer(1, 6))
-
-  if os.path.exists(QR_PATH):
-    try:
-      img_qr = Image(QR_PATH, width=22 * mm, height=22 * mm)
-      img_qr.hAlign = "CENTER"
-      story.append(img_qr)
-    except Exception:
-      pass
 
   doc.build(story)
   return pdf_path
@@ -320,7 +332,7 @@ def app():
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # HTML con logo reducido al 50% (max-width: 22mm)
+        # Vista previa HTML con QR al lado del logo en la parte superior, sin botón extra
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -341,7 +353,7 @@ def app():
                   }}
                   body {{
                     font-family: "Courier New", Courier, monospace;
-                    font-size: 13px;
+                    font-size: 14px; /* Letra ligeramente más grande */
                     font-weight: bold;
                     color: #000;
                     width: 80mm;
@@ -350,11 +362,24 @@ def app():
                     background: #fff;
                     text-align: center;
                   }}
+                  .header-container {{
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    width: 100%;
+                    margin-bottom: 5px;
+                    padding: 0 5px;
+                    box-sizing: border-box;
+                  }}
                   .logo-container img {{
-                    max-width: 22mm; /* Reducido un 50% manteniendo proporciones */
+                    max-width: 32mm;
                     height: auto;
                     display: block;
-                    margin: 0 auto 5px auto;
+                  }}
+                  .qr-container img {{
+                    width: 18mm;
+                    height: 18mm;
+                    display: block;
                   }}
                   pre {{
                     white-space: pre-wrap;
@@ -368,21 +393,11 @@ def app():
                     display: inline-block;
                     text-align: left;
                   }}
-                  .qr-container {{
-                    margin: 10px auto 0 auto;
-                    text-align: center;
-                  }}
-                  .qr-container img {{
-                    width: 24mm;
-                    height: 24mm;
-                    display: block;
-                    margin: 0 auto;
-                  }}
                   .btn-print {{
                     display: block;
-                    width: 100%;
+                    width: 90%;
                     margin: 15px auto;
-                    background: #ff4b4b;
+                    background: #000;
                     color: #fff;
                     padding: 10px;
                     border: none;
@@ -391,34 +406,25 @@ def app():
                     cursor: pointer;
                     border-radius: 4px;
                   }}
-                  .btn-print:hover {{
-                    background: #ff2222;
-                  }}
                 </style>
                 </head>
                 <body>
-                  <div class="logo-container">
-                    {f'<img src="{logo_base64}" alt="Logo">' if logo_base64 else ''}
+                  <div class="header-container">
+                    <div class="logo-container">
+                      {f'<img src="{logo_base64}" alt="Logo">' if logo_base64 else ''}
+                    </div>
+                    <div class="qr-container">
+                      {f'<img src="{qr_base64}" alt="QR">' if qr_base64 else ''}
+                    </div>
                   </div>
                   <pre>{texto_ticket_html}</pre>
-                  <div class="qr-container">
-                    {f'<img src="{qr_base64}" alt="QR">' if qr_base64 else ''}
-                  </div>
-                  <button class="btn-print" onclick="window.print();">🖨️ Imprimir / Vista Previa</button>
+                  <button class="btn-print" onclick="window.print();">🖨️ Imprimir Ticket</button>
                 </body>
                 </html>
                 """
 
         st.markdown("### 🖨️ Vista Previa del Ticket Térmico")
-        st.components.v1.html(html_ticket_preview, height=580, scrolling=True)
-
-        with open(pdf_path, "rb") as f:
-          st.download_button(
-              label="📥 Descargar PDF del Ticket",
-              data=f,
-              file_name=f"ticket_{folio}.pdf",
-              mime="application/pdf",
-          )
+        st.components.v1.html(html_ticket_preview, height=600, scrolling=True)
 
     with col_no:
       if st.button("No, Regresar"):

@@ -5,7 +5,7 @@ import os
 import pandas as pd
 from reportlab.lib.pagesizes import mm
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 import streamlit as st
 
 EXCEL_PATH = "assets/alumnosprimaria.xlsx"
@@ -90,12 +90,10 @@ def obtener_siguiente_folio():
     try:
       df_reg = pd.read_csv(CSV_PATH)
       if "Folio" in df_reg.columns and not df_reg.empty:
-        # Filtramos los folios que correspondan al día de hoy con este prefijo
         folios_hoy = df_reg[
             df_reg["Folio"].astype(str).str.startswith(prefijo_base)
         ]
         if not folios_hoy.empty:
-          # Extraemos los números secuenciales del final
           secuencias = []
           for f in folios_hoy["Folio"]:
             try:
@@ -112,12 +110,12 @@ def obtener_siguiente_folio():
 
 
 def generar_ticket_pdf(datos_compra, folio):
-  """Genera el ticket en PDF con tamaño físico ampliado a 48mm x 250mm para evitar cortes."""
+  """Genera el ticket en PDF con tamaño físico de 48mm x 250mm y QR abajo."""
   os.makedirs(FOLIOS_DIR, exist_ok=True)
   pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio.replace('/', '-')}.pdf")
 
   ancho_ticket = 48 * mm
-  alto_ticket = 250 * mm  # Ampliado a 250mm para asegurar que no se corte el final
+  alto_ticket = 250 * mm
 
   doc = SimpleDocTemplate(
       pdf_path,
@@ -151,37 +149,15 @@ def generar_ticket_pdf(datos_compra, folio):
       textColor="#000000",
   )
 
-  elementos_cabecera = []
+  # Logo arriba centrado
   if os.path.exists(LOGO_PATH):
     try:
-      img_logo = Image(LOGO_PATH, width=16 * mm, height=6 * mm)
-      img_logo.hAlign = "LEFT"
-      elementos_cabecera.append(img_logo)
+      img_logo = Image(LOGO_PATH, width=18 * mm, height=7 * mm)
+      img_logo.hAlign = "CENTER"
+      story.append(img_logo)
+      story.append(Spacer(1, 4))
     except Exception:
-      elementos_cabecera.append("")
-  else:
-    elementos_cabecera.append("")
-
-  if os.path.exists(QR_PATH):
-    try:
-      img_qr = Image(QR_PATH, width=15 * mm, height=15 * mm)
-      img_qr.hAlign = "RIGHT"
-      elementos_cabecera.append(img_qr)
-    except Exception:
-      elementos_cabecera.append("")
-  else:
-    elementos_cabecera.append("")
-
-  tabla_cabecera = Table([elementos_cabecera], colWidths=[26 * mm, 18 * mm])
-  tabla_cabecera.setStyle(
-      TableStyle([
-          ("ALIGN", (0, 0), (0, 0), "LEFT"),
-          ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-          ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-      ])
-  )
-  story.append(tabla_cabecera)
-  story.append(Spacer(1, 4))
+      pass
 
   story.append(Paragraph("================================", style_mono_centro))
   story.append(Paragraph("    FOTOGRAFÍA NAVIDAD 2026   ", style_mono_centro))
@@ -226,6 +202,16 @@ def generar_ticket_pdf(datos_compra, folio):
   story.append(Paragraph("   cualquier aclaración.        ", style_mono_centro))
   story.append(Paragraph("       ¡Vuelva pronto!          ", style_mono_centro))
   story.append(Paragraph("================================", style_mono_centro))
+  story.append(Spacer(1, 6))
+
+  # Código QR abajo centrado en el PDF
+  if os.path.exists(QR_PATH):
+    try:
+      img_qr = Image(QR_PATH, width=18 * mm, height=18 * mm)
+      img_qr.hAlign = "CENTER"
+      story.append(img_qr)
+    except Exception:
+      pass
 
   doc.build(story)
   return pdf_path
@@ -328,7 +314,6 @@ def app():
       if st.button("Sí, Confirmar"):
         datos = st.session_state["pending_compra"]
 
-        # Folio con formato AAAAMMDD-IPE-001 consecutivo
         folio = obtener_siguiente_folio()
         datos["Folio"] = folio
 
@@ -344,6 +329,7 @@ def app():
         st.success(f"¡Compra realizada con éxito! Folio asignado: #{folio}")
         st.session_state["show_confirm"] = False
 
+        # Texto del ticket con el QR abajo
         lineas = []
         lineas.append("==================")
         lineas.append("   FOTOGRAFÍA   ")
@@ -372,16 +358,17 @@ def app():
         lineas.append("==================")
         lineas.append("Atendió:")
         lineas.append(datos["Atendio"])
+         lineas.append("Conserve su ticket para
+cualquier aclaración")
         lineas.append("¡Vuelva pronto!")
         lineas.append("==================")
-        lineas.append("\n\n\n")  # Espacio adicional para evitar corte prematuro
 
         texto_ticket_html = "\n".join(lineas)
 
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # Configuración web ajustada a 48mm x 250mm
+        # Vista previa HTML con Logo arriba, texto al centro y QR abajo
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -414,32 +401,31 @@ def app():
                   .ticket-card {{
                     background: #ffffff;
                     width: 48mm;
-                    padding: 4px;
+                    padding: 6px;
                     box-sizing: border-box;
                     box-shadow: 0 4px 10px rgba(0,0,0,0.1);
                     border-radius: 4px;
                     text-align: center;
                   }}
-                  .header-container {{
+                  .logo-container {{
+                    margin-bottom: 6px;
                     display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    width: 100%;
-                    margin-bottom: 4px;
-                    padding: 0 2px;
-                    box-sizing: border-box;
+                    justify-content: center;
                   }}
                   .logo-container img {{
-                    max-width: 16mm;
+                    max-width: 18mm;
                     height: auto;
                     display: block;
                   }}
                   .qr-container {{
-                    margin-left: auto;
+                    margin-top: 8px;
+                    margin-bottom: 4px;
+                    display: flex;
+                    justify-content: center;
                   }}
                   .qr-container img {{
-                    width: 15mm;
-                    height: 15mm;
+                    width: 18mm;
+                    height: 18mm;
                     display: block;
                   }}
                   pre {{
@@ -476,15 +462,13 @@ def app():
                 </head>
                 <body>
                   <div class="ticket-card">
-                    <div class="header-container">
-                      <div class="logo-container">
-                        {f'<img src="{logo_base64}" alt="Logo">' if logo_base64 else ''}
-                      </div>
-                      <div class="qr-container">
-                        {f'<img src="{qr_base64}" alt="QR">' if qr_base64 else ''}
-                      </div>
+                    <div class="logo-container">
+                      {f'<img src="{logo_base64}" alt="Logo">' if logo_base64 else ''}
                     </div>
                     <pre>{texto_ticket_html}</pre>
+                    <div class="qr-container">
+                      {f'<img src="{qr_base64}" alt="QR">' if qr_base64 else ''}
+                    </div>
                     <button class="btn-print" onclick="window.print();">🖨️ Imprimir Ticket</button>
                   </div>
                 </body>
@@ -492,7 +476,7 @@ def app():
                 """
 
         st.markdown("### 🖨️ Vista Previa del Ticket (48x250 mm)")
-        st.components.v1.html(html_ticket_preview, height=580, scrolling=True)
+        st.components.v1.html(html_ticket_preview, height=620, scrolling=True)
 
     with col_no:
       if st.button("No, Regresar"):

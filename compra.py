@@ -64,20 +64,21 @@ def cargar_alumnos_por_grupos():
 
 
 def generar_ticket_pdf(datos_compra, folio):
-  """Genera el ticket en PDF con formato térmico estricto de 80mm."""
+  """Genera el ticket en PDF con tamaño físico exacto de ticket térmico (80mm x 150mm)."""
   os.makedirs(FOLIOS_DIR, exist_ok=True)
   pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio}.pdf")
 
+  # Tamaño de papel térmico estándar de 80mm de ancho por 150mm de alto
   ancho_ticket = 80 * mm
-  alto_ticket = 180 * mm
+  alto_ticket = 150 * mm
 
   doc = SimpleDocTemplate(
       pdf_path,
       pagesize=(ancho_ticket, alto_ticket),
-      rightMargin=4 * mm,
-      leftMargin=4 * mm,
-      topMargin=6 * mm,
-      bottomMargin=6 * mm,
+      rightMargin=3 * mm,
+      leftMargin=3 * mm,
+      topMargin=4 * mm,
+      bottomMargin=4 * mm,
   )
 
   story = []
@@ -103,11 +104,10 @@ def generar_ticket_pdf(datos_compra, folio):
       textColor="#000000",
   )
 
-  # Cabecera superior: Logo (reducido 25%) y QR (aumentado 25%) en el PDF
+  # Cabecera superior: Logo (reducido 25%) y QR (aumentado 25%)
   elementos_cabecera = []
   if os.path.exists(LOGO_PATH):
     try:
-      # Logo reducido un 25% (de ~24mm a 18mm de ancho)
       img_logo = Image(LOGO_PATH, width=18 * mm, height=6.5 * mm)
       img_logo.hAlign = "CENTER"
       elementos_cabecera.append(img_logo)
@@ -118,7 +118,6 @@ def generar_ticket_pdf(datos_compra, folio):
 
   if os.path.exists(QR_PATH):
     try:
-      # QR aumentado un 25% (de ~16mm a 20mm)
       img_qr = Image(QR_PATH, width=20 * mm, height=20 * mm)
       img_qr.hAlign = "CENTER"
       elementos_cabecera.append(img_qr)
@@ -135,7 +134,7 @@ def generar_ticket_pdf(datos_compra, folio):
       ])
   )
   story.append(tabla_cabecera)
-  story.append(Spacer(1, 6))
+  story.append(Spacer(1, 4))
 
   story.append(Paragraph("================================", style_mono_centro))
   story.append(Paragraph("    FOTOGRAFÍA NAVIDAD 2026   ", style_mono_centro))
@@ -334,7 +333,7 @@ def app():
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # HTML con logo reducido 25% (max-width: 24mm) y QR aumentado 25% (width: 22.5mm)
+        # CSS con @page forzado a 80mm por defecto para cualquier navegador/ordenador
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -348,8 +347,8 @@ def app():
                       padding: 0 !important;
                     }}
                     @page {{
-                      size: 80mm auto;
-                      margin: 0;
+                      size: 80mm 150mm;
+                      margin: 0mm;
                     }}
                     .btn-print {{ display: none !important; }}
                   }}
@@ -374,12 +373,12 @@ def app():
                     box-sizing: border-box;
                   }}
                   .logo-container img {{
-                    max-width: 24mm; /* Logo reducido un 25% */
+                    max-width: 24mm;
                     height: auto;
                     display: block;
                   }}
                   .qr-container img {{
-                    width: 22.5mm; /* QR aumentado un 25% */
+                    width: 22.5mm;
                     height: 22.5mm;
                     display: block;
                   }}

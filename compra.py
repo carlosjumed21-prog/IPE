@@ -75,18 +75,19 @@ def obtener_fecha_hora_actual():
 
 
 def generar_ticket_pdf(datos_compra, folio):
-  """Genera el ticket en PDF con tamaño físico exacto de ticket térmico (80mm x 150mm)."""
+  """Genera el ticket en PDF con tamaño físico exacto de 48mm x 210mm."""
   os.makedirs(FOLIOS_DIR, exist_ok=True)
   pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio}.pdf")
 
-  ancho_ticket = 80 * mm
-  alto_ticket = 150 * mm
+  # Medidas de la impresora: 48mm de ancho por 210mm de alto
+  ancho_ticket = 48 * mm
+  alto_ticket = 210 * mm
 
   doc = SimpleDocTemplate(
       pdf_path,
       pagesize=(ancho_ticket, alto_ticket),
-      rightMargin=3 * mm,
-      leftMargin=3 * mm,
+      rightMargin=2 * mm,
+      leftMargin=2 * mm,
       topMargin=4 * mm,
       bottomMargin=4 * mm,
   )
@@ -98,8 +99,8 @@ def generar_ticket_pdf(datos_compra, folio):
       "TicketCentro",
       parent=styles["Normal"],
       fontName="Courier-Bold",
-      fontSize=9.5,
-      leading=12,
+      fontSize=8.5,
+      leading=11,
       alignment=1,
       textColor="#000000",
   )
@@ -108,17 +109,18 @@ def generar_ticket_pdf(datos_compra, folio):
       "TicketIzquierda",
       parent=styles["Normal"],
       fontName="Courier-Bold",
-      fontSize=9.5,
-      leading=12,
+      fontSize=8.5,
+      leading=11,
       alignment=0,
       textColor="#000000",
   )
 
+  # Cabecera superior adaptada a 48mm: Logo a la izquierda, QR alineado hacia la derecha
   elementos_cabecera = []
   if os.path.exists(LOGO_PATH):
     try:
-      img_logo = Image(LOGO_PATH, width=18 * mm, height=6.5 * mm)
-      img_logo.hAlign = "CENTER"
+      img_logo = Image(LOGO_PATH, width=16 * mm, height=6 * mm)
+      img_logo.hAlign = "LEFT"
       elementos_cabecera.append(img_logo)
     except Exception:
       elementos_cabecera.append("")
@@ -127,18 +129,20 @@ def generar_ticket_pdf(datos_compra, folio):
 
   if os.path.exists(QR_PATH):
     try:
-      img_qr = Image(QR_PATH, width=20 * mm, height=20 * mm)
-      img_qr.hAlign = "CENTER"
+      img_qr = Image(QR_PATH, width=15 * mm, height=15 * mm)
+      img_qr.hAlign = "RIGHT"  # Forzado hacia la derecha
       elementos_cabecera.append(img_qr)
     except Exception:
       elementos_cabecera.append("")
   else:
     elementos_cabecera.append("")
 
-  tabla_cabecera = Table([elementos_cabecera], colWidths=[42 * mm, 26 * mm])
+  # Ancho total de columnas ajustado a los 44mm útiles (48mm menos 4mm de márgenes)
+  tabla_cabecera = Table([elementos_cabecera], colWidths=[26 * mm, 18 * mm])
   tabla_cabecera.setStyle(
       TableStyle([
-          ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+          ("ALIGN", (0, 0), (0, 0), "LEFT"),
+          ("ALIGN", (1, 0), (1, 0), "RIGHT"),
           ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
       ])
   )
@@ -161,7 +165,7 @@ def generar_ticket_pdf(datos_compra, folio):
   story.append(Paragraph("--------------------------------", style_mono_centro))
 
   cant_str = "1".ljust(3)
-  desc_str = datos_compra["Concepto"][:14].ljust(14)
+  desc_str = datos_compra["Concepto"][:12].ljust(12)
   precio_str = f"${datos_compra['Importe']:.2f}".rjust(8)
   total_str = f"${datos_compra['Importe']:.2f}".rjust(12)
 
@@ -306,50 +310,44 @@ def app():
         st.success(f"¡Compra realizada con éxito! Folio generado: {folio}")
         st.session_state["show_confirm"] = False
 
-        # Construcción del texto del ticket para visualización HTML
+        # Construcción del texto del ticket adaptado a 48mm (~32 caracteres)
         lineas = []
-        lineas.append("================================")
-        lineas.append("    FOTOGRAFÍA NAVIDAD 2026   ")
-        lineas.append("   ¡Gracias por su compra!    ")
-        lineas.append("================================")
+        lineas.append("==================")
+        lineas.append("   FOTOGRAFÍA   ")
+        lineas.append("  NAVIDAD 2026  ")
+        lineas.append("==================")
         lineas.append("Ticket: #" + folio)
-        lineas.append("Fecha: " + datos["Fecha"])
-        lineas.append("Cliente: " + datos["Alumno"])
+        lineas.append("F/H: " + datos["Fecha"])
+        lineas.append("Cliente:")
+        lineas.append(datos["Alumno"])
         lineas.append("Grupo: " + datos["Grupo"])
-        lineas.append("--------------------------------")
-        lineas.append("CANT DESCRIPCIÓN          P.UNIT")
-        lineas.append("            TOTAL               ")
-        lineas.append("--------------------------------")
+        lineas.append("------------------")
+        lineas.append("CANT DESCRIPCIÓN  P.UNIT")
+        lineas.append("------------------")
 
         cant_str = "1".ljust(3)
-        desc_str = datos["Concepto"][:14].ljust(14)
-        precio_str = f"${datos['Importe']:.2f}".rjust(8)
-        total_str = f"${datos['Importe']:.2f}".rjust(12)
+        desc_str = datos["Concepto"][:10].ljust(10)
+        precio_str = f"${datos['Importe']:.2f}".rjust(6)
 
         lineas.append(f"{cant_str} {desc_str} {precio_str}")
-        lineas.append(f"            {total_str}")
-        lineas.append("--------------------------------")
+        lineas.append("------------------")
 
         subtotal = datos["Importe"]
         lineas.append(
-            f"SUBTOTAL:         " + f"${subtotal:.2f}".rjust(13)
+            f"TOTAL: " + f"${subtotal:.2f}".rjust(11)
         )
-        lineas.append(
-            f"TOTAL A PAGAR:    " + f"${subtotal:.2f}".rjust(13)
-        )
-        lineas.append("================================")
-        lineas.append("   Atendió: " + datos["Atendio"])
-        lineas.append("  Conserve su ticket para       ")
-        lineas.append("   cualquier aclaración.        ")
-        lineas.append("       ¡Vuelva pronto!          ")
-        lineas.append("================================")
+        lineas.append("==================")
+        lineas.append("Atendió:")
+        lineas.append(datos["Atendio"])
+        lineas.append("¡Vuelva pronto!")
+        lineas.append("==================")
 
         texto_ticket_html = "\n".join(lineas)
 
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # Vista previa estilizada tipo tarjeta térmica con botón directo de impresión
+        # Vista previa HTML con medidas de 48mm y QR alineado a la extrema derecha
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -357,35 +355,35 @@ def app():
                 <style>
                   @media print {{
                     html, body {{
-                      width: 80mm !important;
-                      max-width: 80mm !important;
+                      width: 48mm !important;
+                      max-width: 48mm !important;
                       margin: 0 !important;
                       padding: 0 !important;
                       background: #fff !important;
                     }}
                     @page {{
-                      size: 80mm auto;
+                      size: 48mm 210mm;
                       margin: 0mm;
                     }}
                     .btn-print {{ display: none !important; }}
-                    .ticket-card {{ box-shadow: none !important; padding: 0 !important; }}
+                    .ticket-card {{ box-shadow: none !important; padding: 0 !important; width: 48mm !important; }}
                   }}
                   body {{
                     font-family: "Courier New", Courier, monospace;
                     background: #f8f9fa;
                     margin: 0;
-                    padding: 10px;
+                    padding: 5px;
                     display: flex;
                     flex-direction: column;
                     align-items: center;
                   }}
                   .ticket-card {{
                     background: #ffffff;
-                    width: 80mm;
-                    padding: 10px;
+                    width: 48mm;
+                    padding: 4px;
                     box-sizing: border-box;
                     box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-                    border-radius: 6px;
+                    border-radius: 4px;
                     text-align: center;
                   }}
                   .header-container {{
@@ -393,18 +391,21 @@ def app():
                     justify-content: space-between;
                     align-items: center;
                     width: 100%;
-                    margin-bottom: 5px;
-                    padding: 0 5px;
+                    margin-bottom: 4px;
+                    padding: 0 2px;
                     box-sizing: border-box;
                   }}
                   .logo-container img {{
-                    max-width: 24mm;
+                    max-width: 16mm;
                     height: auto;
                     display: block;
                   }}
+                  .qr-container {{
+                    margin-left: auto; /* Empuja el QR hacia la extrema derecha sin desbordarse */
+                  }}
                   .qr-container img {{
-                    width: 22.5mm;
-                    height: 22.5mm;
+                    width: 15mm;
+                    height: 15mm;
                     display: block;
                   }}
                   pre {{
@@ -413,9 +414,9 @@ def app():
                     margin: 0 auto;
                     padding: 0;
                     font-family: inherit;
-                    font-size: 13px;
+                    font-size: 11px;
                     font-weight: bold;
-                    line-height: 1.2;
+                    line-height: 1.15;
                     display: inline-block;
                     text-align: left;
                     color: #000;
@@ -423,13 +424,13 @@ def app():
                   .btn-print {{
                     display: block;
                     width: 100%;
-                    margin-top: 15px;
+                    margin-top: 10px;
                     background: #000;
                     color: #fff;
-                    padding: 12px;
+                    padding: 8px;
                     border: none;
                     font-weight: bold;
-                    font-size: 15px;
+                    font-size: 12px;
                     cursor: pointer;
                     border-radius: 4px;
                     text-align: center;
@@ -456,8 +457,8 @@ def app():
                 </html>
                 """
 
-        st.markdown("### 🖨️ Vista Previa del Ticket")
-        st.components.v1.html(html_ticket_preview, height=620, scrolling=True)
+        st.markdown("### 🖨️ Vista Previa del Ticket (48x210 mm)")
+        st.components.v1.html(html_ticket_preview, height=580, scrolling=True)
 
     with col_no:
       if st.button("No, Regresar"):

@@ -1,6 +1,8 @@
 import base64
+from datetime import datetime
 import os
 import pandas as pd
+import pytz  # Asegúrate de incluir pytz en tus requirements.txt si es necesario
 from reportlab.lib.pagesizes import mm
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -63,12 +65,21 @@ def cargar_alumnos_por_grupos():
     return None, f"Error al procesar el archivo Excel: {str(e)}"
 
 
+def obtener_fecha_hora_actual():
+  """Obtiene la fecha y hora exacta ajustada a la zona horaria de México."""
+  try:
+    zona_mexico = pytz.timezone("America/Mexico_City")
+    return datetime.now(zona_mexico).strftime("%d/%m/%Y %H:%M")
+  except Exception:
+    # Fallback por si pytz no está instalado
+    return datetime.now().strftime("%d/%m/%Y %H:%M")
+
+
 def generar_ticket_pdf(datos_compra, folio):
   """Genera el ticket en PDF con tamaño físico exacto de ticket térmico (80mm x 150mm)."""
   os.makedirs(FOLIOS_DIR, exist_ok=True)
   pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio}.pdf")
 
-  # Tamaño de papel térmico estándar de 80mm de ancho por 150mm de alto
   ancho_ticket = 80 * mm
   alto_ticket = 150 * mm
 
@@ -258,13 +269,15 @@ def app():
     elif not atendio:
       st.warning("⚠️ Por favor seleccione quién atendió.")
     else:
+      # Capturamos la fecha y hora correcta al momento de confirmar
+      fecha_hora_actual = obtener_fecha_hora_actual()
       st.session_state["pending_compra"] = {
           "Alumno": nombre_alumno,
           "Grupo": grupo_seleccionado,
           "Concepto": concepto,
           "Importe": importe,
           "Atendio": atendio,
-          "Fecha": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M"),
+          "Fecha": fecha_hora_actual,
       }
       st.session_state["show_confirm"] = True
 
@@ -275,7 +288,13 @@ def app():
     with col_si:
       if st.button("Sí, Confirmar"):
         datos = st.session_state["pending_compra"]
-        folio = pd.Timestamp.now().strftime("%Y%m%d%H%M%S")
+        # Folio basado en timestamp preciso
+        try:
+          zona_mexico = pytz.timezone("America/Mexico_City")
+          folio = datetime.now(zona_mexico).strftime("%Y%m%d%H%M%S")
+        except Exception:
+          folio = datetime.now().strftime("%Y%m%d%H%M%S")
+
         datos["Folio"] = folio
 
         csv_path = "assets/registros_compras.csv"
@@ -333,7 +352,6 @@ def app():
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # CSS con @page forzado a 80mm por defecto para cualquier navegador/ordenador
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>

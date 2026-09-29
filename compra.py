@@ -79,7 +79,6 @@ def generar_ticket_pdf(datos_compra, folio):
   os.makedirs(FOLIOS_DIR, exist_ok=True)
   pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio}.pdf")
 
-  # Medida correcta restaurada a 48mm x 210mm
   ancho_ticket = 48 * mm
   alto_ticket = 210 * mm
 
@@ -245,8 +244,13 @@ def app():
 
   with st.form("form_compra_detalles"):
     st.markdown("---")
-    concepto = st.text_input("Concepto:", value="Fotografía Navidad 2026")
-    importe = st.number_input("Importe ($):", value=350.0, format="%.2f")
+    # Campos bloqueados con disabled=True
+    concepto = st.text_input(
+        "Concepto:", value="Fotografía Navidad 2026", disabled=True
+    )
+    importe = st.number_input(
+        "Importe ($):", value=350.0, format="%.2f", disabled=True
+    )
 
     atendio = st.selectbox(
         "Quién atendió:",
@@ -273,8 +277,8 @@ def app():
       st.session_state["pending_compra"] = {
           "Alumno": nombre_alumno,
           "Grupo": grupo_seleccionado,
-          "Concepto": concepto,
-          "Importe": importe,
+          "Concepto": "Fotografía Navidad 2026",  # Valor fijo asegurado
+          "Importe": 350.0,  # Valor fijo asegurado
           "Atendio": atendio,
           "Fecha": fecha_hora_actual,
       }
@@ -345,7 +349,6 @@ def app():
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # Configuración de impresión restaurada a 48mm x 210mm exactos
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>

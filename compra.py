@@ -75,13 +75,13 @@ def obtener_fecha_hora_actual():
 
 
 def generar_ticket_pdf(datos_compra, folio):
-  """Genera el ticket en PDF con tamaño físico exacto de 48mm x 210mm."""
+  """Genera el ticket en PDF con tamaño físico exacto de 48mm x 120mm."""
   os.makedirs(FOLIOS_DIR, exist_ok=True)
   pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio}.pdf")
 
-  # Medidas de la impresora: 48mm de ancho por 210mm de alto
+  # Altura reducida a 120mm para evitar tiras de papel muy largas
   ancho_ticket = 48 * mm
-  alto_ticket = 210 * mm
+  alto_ticket = 120 * mm
 
   doc = SimpleDocTemplate(
       pdf_path,
@@ -115,7 +115,6 @@ def generar_ticket_pdf(datos_compra, folio):
       textColor="#000000",
   )
 
-  # Cabecera superior adaptada a 48mm: Logo a la izquierda, QR alineado hacia la derecha
   elementos_cabecera = []
   if os.path.exists(LOGO_PATH):
     try:
@@ -130,14 +129,13 @@ def generar_ticket_pdf(datos_compra, folio):
   if os.path.exists(QR_PATH):
     try:
       img_qr = Image(QR_PATH, width=15 * mm, height=15 * mm)
-      img_qr.hAlign = "RIGHT"  # Forzado hacia la derecha
+      img_qr.hAlign = "RIGHT"
       elementos_cabecera.append(img_qr)
     except Exception:
       elementos_cabecera.append("")
   else:
     elementos_cabecera.append("")
 
-  # Ancho total de columnas ajustado a los 44mm útiles (48mm menos 4mm de márgenes)
   tabla_cabecera = Table([elementos_cabecera], colWidths=[26 * mm, 18 * mm])
   tabla_cabecera.setStyle(
       TableStyle([
@@ -165,8 +163,8 @@ def generar_ticket_pdf(datos_compra, folio):
   story.append(Paragraph("--------------------------------", style_mono_centro))
 
   cant_str = "1".ljust(3)
-  desc_str = datos_compra["Concepto"][:12].ljust(12)
-  precio_str = f"${datos_compra['Importe']:.2f}".rjust(8)
+  desc_str = datos_compra["Concepto"][:10].ljust(10)
+  precio_str = f"${datos_compra['Importe']:.2f}".rjust(6)
   total_str = f"${datos_compra['Importe']:.2f}".rjust(12)
 
   story.append(Paragraph(f"{cant_str} {desc_str} {precio_str}", style_mono_izq))
@@ -310,7 +308,6 @@ def app():
         st.success(f"¡Compra realizada con éxito! Folio generado: {folio}")
         st.session_state["show_confirm"] = False
 
-        # Construcción del texto del ticket adaptado a 48mm (~32 caracteres)
         lineas = []
         lineas.append("==================")
         lineas.append("   FOTOGRAFÍA   ")
@@ -341,13 +338,15 @@ def app():
         lineas.append(datos["Atendio"])
         lineas.append("¡Vuelva pronto!")
         lineas.append("==================")
+        # Saltos controlados al final para el corte limpio de la impresora térmica
+        lineas.append("\n\n")
 
         texto_ticket_html = "\n".join(lineas)
 
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # Vista previa HTML con medidas de 48mm y QR alineado a la extrema derecha
+        # Configuración de impresión a 48mm x 120mm exactos
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -362,7 +361,7 @@ def app():
                       background: #fff !important;
                     }}
                     @page {{
-                      size: 48mm 210mm;
+                      size: 48mm 120mm;
                       margin: 0mm;
                     }}
                     .btn-print {{ display: none !important; }}
@@ -401,7 +400,7 @@ def app():
                     display: block;
                   }}
                   .qr-container {{
-                    margin-left: auto; /* Empuja el QR hacia la extrema derecha sin desbordarse */
+                    margin-left: auto;
                   }}
                   .qr-container img {{
                     width: 15mm;
@@ -457,7 +456,7 @@ def app():
                 </html>
                 """
 
-        st.markdown("### 🖨️ Vista Previa del Ticket (48x210 mm)")
+        st.markdown("### 🖨️ Vista Previa del Ticket (48x120 mm)")
         st.components.v1.html(html_ticket_preview, height=580, scrolling=True)
 
     with col_no:

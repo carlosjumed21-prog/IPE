@@ -1,7 +1,7 @@
-base64
+import base64
 from datetime import datetime
-from zoneinfo import ZoneInfo
 import os
+from zoneinfo import ZoneInfo
 import pandas as pd
 from reportlab.lib.pagesizes import mm
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet

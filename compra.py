@@ -28,19 +28,16 @@ def cargar_alumnos_por_grupos():
     datos_grupos = {}
 
     for hoja in todas_hojas:
-      # Leemos la hoja completa sin cabecera fija (header=None)
       df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
 
-      # Validamos que la hoja tenga al menos la columna B (índice 1) y 10 filas o más
       if df_hoja.shape[0] >= 10 and df_hoja.shape[1] > 1:
-        # Extraemos desde la fila 10 (índice 9) en adelante de la columna B (índice 1)
+        # Columna B (índice 1), desde la fila 10 (índice 9) en adelante
         columna_b = df_hoja.iloc[9:, 1]
 
         lista_alumnos = []
         for val in columna_b:
           if pd.notna(val):
             nombre_limpio = str(val).strip()
-            # Filtramos valores vacíos o palabras comunes que no sean nombres
             if nombre_limpio and nombre_limpio.lower() not in [
                 "nan",
                 "nombre",
@@ -52,7 +49,6 @@ def cargar_alumnos_por_grupos():
               lista_alumnos.append(nombre_limpio)
 
         if lista_alumnos:
-          # Ordenamos alfabéticamente y eliminamos duplicados
           datos_grupos[str(hoja)] = sorted(list(set(lista_alumnos)))
 
     if not datos_grupos:
@@ -108,7 +104,6 @@ def generar_ticket_pdf(datos_compra, folio):
       textColor="#000000",
   )
 
-  # Logo en PDF (reducido un 15% proporcionalmente)
   if os.path.exists(LOGO_PATH):
     try:
       img_logo = Image(LOGO_PATH, width=30 * mm, height=11 * mm)
@@ -129,7 +124,6 @@ def generar_ticket_pdf(datos_compra, folio):
   story.append(Paragraph(f"Grupo: {datos_compra['Grupo']}", style_mono_izq))
   story.append(Paragraph("--------------------------------", style_mono_centro))
 
-  # Cabecera de la tabla de conceptos
   story.append(Paragraph("CANT DESCRIPCIÓN          P.UNIT", style_mono_izq))
   story.append(Paragraph("            TOTAL               ", style_mono_izq))
   story.append(Paragraph("--------------------------------", style_mono_centro))
@@ -164,7 +158,6 @@ def generar_ticket_pdf(datos_compra, folio):
   story.append(Paragraph("================================", style_mono_centro))
   story.append(Spacer(1, 6))
 
-  # QR en la parte inferior del PDF
   if os.path.exists(QR_PATH):
     try:
       img_qr = Image(QR_PATH, width=22 * mm, height=22 * mm)
@@ -178,7 +171,6 @@ def generar_ticket_pdf(datos_compra, folio):
 
 
 def obtener_imagen_base64(ruta_imagen):
-  """Convierte una imagen local a base64 para incrustarla en HTML."""
   if os.path.exists(ruta_imagen):
     with open(ruta_imagen, "rb") as f:
       encoded = base64.b64encode(f.read()).decode("utf-8")
@@ -197,27 +189,39 @@ def app():
     st.error(f"Error al cargar el archivo de Excel: {error}")
     return
 
-  with st.form("form_compra"):
-    # 1. Menú desplegable de Grupos
-    lista_grupos = sorted(list(dic_grupos.keys()))
-    grupo_seleccionado = st.selectbox(
-        "Seleccione el Grupo:",
-        options=lista_grupos,
-        index=None,
-        placeholder="Seleccione un grupo...",
-    )
+  lista_grupos = sorted(list(dic_grupos.keys()))
 
-    # 2. Menú desplegable de Alumnos acorde al grupo
-    lista_alumnos = (
-        dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
-    )
-    nombre_alumno = st.selectbox(
-        "Nombre del alumno:",
-        options=lista_alumnos,
-        index=None,
-        placeholder="Seleccione un alumno...",
-    )
+  # Callback para limpiar el alumno seleccionado si cambia el grupo
+  def actualizar_grupo():
+    st.session_state["alumno_seleccionado"] = None
 
+  # 1. Menú desplegable de Grupos (fuera del formulario para permitir interactividad en tiempo real)
+  grupo_seleccionado = st.selectbox(
+      "Seleccione el Grupo:",
+      options=lista_grupos,
+      index=None,
+      placeholder="Seleccione un grupo...",
+      key="grupo_seleccionado",
+      on_change=actualizar_grupo,
+  )
+
+  # 2. Menú desplegable de Alumnos acorde al grupo seleccionado
+  lista_alumnos = (
+      dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
+  )
+  nombre_alumno = st.selectbox(
+      "Nombre del alumno:",
+      options=lista_alumnos,
+      index=None,
+      placeholder=(
+          "Seleccione primero un grupo..."
+          if not grupo_seleccionado
+          else "Seleccione un alumno..."
+      ),
+      key="alumno_seleccionado",
+  )
+
+  with st.form("form_compra_detalles"):
     st.markdown("---")
     concepto = st.text_input("Concepto:", value="Fotografía Navidad 2026")
     importe = st.number_input("Importe ($):", value=350.0, format="%.2f")
@@ -316,11 +320,9 @@ def app():
 
         texto_ticket_html = "\n".join(lineas)
 
-        # Cargar imágenes en base64
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # HTML con logo reducido 15% (max-width: 38mm) y QR asegurado abajo
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -351,7 +353,7 @@ def app():
                     text-align: center;
                   }}
                   .logo-container img {{
-                    max-width: 38mm; /* Reducido un 15% manteniendo proporciones */
+                    max-width: 38mm;
                     height: auto;
                     display: block;
                     margin: 0 auto 5px auto;

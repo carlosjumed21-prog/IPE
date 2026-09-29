@@ -14,9 +14,10 @@ QR_PATH = "assets/qr_ticket.png"
 
 @st.cache_data
 def cargar_alumnos_por_grupos():
-  """Carga los alumnos por cada hoja (grupo), leyendo desde la columna B (índice 1)
+  """Carga los alumnos por cada hoja (grupo), leyendo estrictamente
 
-  a partir de la fila 10 (índice 9) hasta la última fila existente.
+  desde la columna B (índice 1) a partir de la fila 10 (índice 9 en base 0)
+  hasta la última fila existente.
   """
   if not os.path.exists(EXCEL_PATH):
     return None, f"No se encontró el archivo de Excel en la ruta: {EXCEL_PATH}"
@@ -27,31 +28,38 @@ def cargar_alumnos_por_grupos():
     datos_grupos = {}
 
     for hoja in todas_hojas:
+      # Leemos la hoja completa sin cabecera fija (header=None)
       df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
 
-      if df_hoja.shape[0] > 9 and df_hoja.shape[1] > 1:
-        columna_b_desde_fila_10 = df_hoja.iloc[9:, 1]
+      # Validamos que la hoja tenga al menos la columna B (índice 1) y 10 filas o más
+      if df_hoja.shape[0] >= 10 and df_hoja.shape[1] > 1:
+        # Extraemos desde la fila 10 (índice 9) en adelante de la columna B (índice 1)
+        columna_b = df_hoja.iloc[9:, 1]
 
         lista_alumnos = []
-        for val in columna_b_desde_fila_10.dropna():
-          nombre_limpio = str(val).strip()
-          if nombre_limpio and nombre_limpio.lower() not in [
-              "nan",
-              "nombre",
-              "alumnos",
-              "none",
-              "alumno",
-          ]:
-            lista_alumnos.append(nombre_limpio)
+        for val in columna_b:
+          if pd.notna(val):
+            nombre_limpio = str(val).strip()
+            # Filtramos valores vacíos o palabras comunes que no sean nombres
+            if nombre_limpio and nombre_limpio.lower() not in [
+                "nan",
+                "nombre",
+                "alumnos",
+                "none",
+                "alumno",
+                "nombres",
+            ]:
+              lista_alumnos.append(nombre_limpio)
 
         if lista_alumnos:
+          # Ordenamos alfabéticamente y eliminamos duplicados
           datos_grupos[str(hoja)] = sorted(list(set(lista_alumnos)))
 
     if not datos_grupos:
       return (
           None,
-          "No se encontraron alumnos en la columna B (desde la fila 10) en las"
-          " hojas.",
+          "No se encontraron alumnos en la columna B (a partir de la fila 10)"
+          " en las hojas.",
       )
 
     return datos_grupos, None
@@ -121,7 +129,7 @@ def generar_ticket_pdf(datos_compra, folio):
   story.append(Paragraph(f"Grupo: {datos_compra['Grupo']}", style_mono_izq))
   story.append(Paragraph("--------------------------------", style_mono_centro))
 
-  # Cabecera de la tabla de conceptos mejorada
+  # Cabecera de la tabla de conceptos
   story.append(Paragraph("CANT DESCRIPCIÓN          P.UNIT", style_mono_izq))
   story.append(Paragraph("            TOTAL               ", style_mono_izq))
   story.append(Paragraph("--------------------------------", style_mono_centro))
@@ -190,7 +198,7 @@ def app():
     return
 
   with st.form("form_compra"):
-    # 1. Menú desplegable de Grupos (Sin selección por defecto)
+    # 1. Menú desplegable de Grupos
     lista_grupos = sorted(list(dic_grupos.keys()))
     grupo_seleccionado = st.selectbox(
         "Seleccione el Grupo:",
@@ -199,7 +207,7 @@ def app():
         placeholder="Seleccione un grupo...",
     )
 
-    # 2. Menú desplegable de Alumnos acorde al grupo (Sin selección por defecto)
+    # 2. Menú desplegable de Alumnos acorde al grupo
     lista_alumnos = (
         dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
     )

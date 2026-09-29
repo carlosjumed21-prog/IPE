@@ -87,7 +87,7 @@ def generar_ticket_pdf(datos_compra, folio):
       "TicketCentro",
       parent=styles["Normal"],
       fontName="Courier-Bold",
-      fontSize=9.5,  # Letra un poco más grande
+      fontSize=9.5,
       leading=12,
       alignment=1,
       textColor="#000000",
@@ -97,17 +97,18 @@ def generar_ticket_pdf(datos_compra, folio):
       "TicketIzquierda",
       parent=styles["Normal"],
       fontName="Courier-Bold",
-      fontSize=9.5,  # Letra un poco más grande
+      fontSize=9.5,
       leading=12,
       alignment=0,
       textColor="#000000",
   )
 
-  # Cabecera superior: Logo y QR lado a lado en el PDF
+  # Cabecera superior: Logo (reducido 25%) y QR (aumentado 25%) en el PDF
   elementos_cabecera = []
   if os.path.exists(LOGO_PATH):
     try:
-      img_logo = Image(LOGO_PATH, width=24 * mm, height=9 * mm)
+      # Logo reducido un 25% (de ~24mm a 18mm de ancho)
+      img_logo = Image(LOGO_PATH, width=18 * mm, height=6.5 * mm)
       img_logo.hAlign = "CENTER"
       elementos_cabecera.append(img_logo)
     except Exception:
@@ -117,7 +118,8 @@ def generar_ticket_pdf(datos_compra, folio):
 
   if os.path.exists(QR_PATH):
     try:
-      img_qr = Image(QR_PATH, width=16 * mm, height=16 * mm)
+      # QR aumentado un 25% (de ~16mm a 20mm)
+      img_qr = Image(QR_PATH, width=20 * mm, height=20 * mm)
       img_qr.hAlign = "CENTER"
       elementos_cabecera.append(img_qr)
     except Exception:
@@ -332,7 +334,7 @@ def app():
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # Vista previa HTML con QR al lado del logo en la parte superior, sin botón extra
+        # HTML con logo reducido 25% (max-width: 24mm) y QR aumentado 25% (width: 22.5mm)
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -353,7 +355,7 @@ def app():
                   }}
                   body {{
                     font-family: "Courier New", Courier, monospace;
-                    font-size: 14px; /* Letra ligeramente más grande */
+                    font-size: 14px;
                     font-weight: bold;
                     color: #000;
                     width: 80mm;
@@ -372,13 +374,13 @@ def app():
                     box-sizing: border-box;
                   }}
                   .logo-container img {{
-                    max-width: 32mm;
+                    max-width: 24mm; /* Logo reducido un 25% */
                     height: auto;
                     display: block;
                   }}
                   .qr-container img {{
-                    width: 18mm;
-                    height: 18mm;
+                    width: 22.5mm; /* QR aumentado un 25% */
+                    height: 22.5mm;
                     display: block;
                   }}
                   pre {{

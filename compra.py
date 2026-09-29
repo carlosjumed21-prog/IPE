@@ -1,8 +1,8 @@
-import base64
+base64
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import os
 import pandas as pd
-import pytz  # Asegúrate de incluir pytz en tus requirements.txt si es necesario
 from reportlab.lib.pagesizes import mm
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -68,10 +68,9 @@ def cargar_alumnos_por_grupos():
 def obtener_fecha_hora_actual():
   """Obtiene la fecha y hora exacta ajustada a la zona horaria de México."""
   try:
-    zona_mexico = pytz.timezone("America/Mexico_City")
+    zona_mexico = ZoneInfo("America/Mexico_City")
     return datetime.now(zona_mexico).strftime("%d/%m/%Y %H:%M")
   except Exception:
-    # Fallback por si pytz no está instalado
     return datetime.now().strftime("%d/%m/%Y %H:%M")
 
 
@@ -269,7 +268,6 @@ def app():
     elif not atendio:
       st.warning("⚠️ Por favor seleccione quién atendió.")
     else:
-      # Capturamos la fecha y hora correcta al momento de confirmar
       fecha_hora_actual = obtener_fecha_hora_actual()
       st.session_state["pending_compra"] = {
           "Alumno": nombre_alumno,
@@ -288,9 +286,8 @@ def app():
     with col_si:
       if st.button("Sí, Confirmar"):
         datos = st.session_state["pending_compra"]
-        # Folio basado en timestamp preciso
         try:
-          zona_mexico = pytz.timezone("America/Mexico_City")
+          zona_mexico = ZoneInfo("America/Mexico_City")
           folio = datetime.now(zona_mexico).strftime("%Y%m%d%H%M%S")
         except Exception:
           folio = datetime.now().strftime("%Y%m%d%H%M%S")

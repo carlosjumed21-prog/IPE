@@ -12,6 +12,7 @@ EXCEL_PATH = "assets/alumnosprimaria.xlsx"
 FOLIOS_DIR = "assets/folios"
 LOGO_PATH = "assets/logo.png"
 QR_PATH = "assets/qr_ticket.png"
+CSV_PATH = "assets/registros_compras.csv"
 
 
 @st.cache_data
@@ -72,6 +73,24 @@ def obtener_fecha_hora_actual():
     return datetime.now(zona_mexico).strftime("%d/%m/%Y %H:%M")
   except Exception:
     return datetime.now().strftime("%d/%m/%Y %H:%M")
+
+
+def obtener_siguiente_folio():
+  """Calcula el folio consecutivo con continuidad (0001, 0002, etc.)."""
+  if os.path.exists(CSV_PATH):
+    try:
+      df_reg = pd.read_csv(CSV_PATH)
+      if "Folio" in df_reg.columns and not df_reg.empty:
+        # Filtramos solo los que sean puramente numéricos para evitar errores
+        folios_numericos = pd.to_numeric(
+            df_reg["Folio"], errors="coerce"
+        ).dropna()
+        if not folios_numericos.empty:
+          ultimo_folio = int(folios_numericos.max())
+          return f"{ultimo_folio + 1:04d}"
+    except Exception:
+      pass
+  return "0001"
 
 
 def generar_ticket_pdf(datos_compra, folio):
@@ -244,7 +263,6 @@ def app():
 
   with st.form("form_compra_detalles"):
     st.markdown("---")
-    # Campos bloqueados con disabled=True
     concepto = st.text_input(
         "Concepto:", value="Fotografía Navidad 2026", disabled=True
     )
@@ -271,14 +289,14 @@ def app():
     elif not nombre_alumno:
       st.warning("⚠️ Por favor seleccione un alumno.")
     elif not atendio:
-      st.warning("⚠️ Por favor seleccione quién atendió.")
+      st.warning("⚠️ Por favor seleccione quién atiende.")
     else:
       fecha_hora_actual = obtener_fecha_hora_actual()
       st.session_state["pending_compra"] = {
           "Alumno": nombre_alumno,
           "Grupo": grupo_seleccionado,
-          "Concepto": "Fotografía Navidad 2026",  # Valor fijo asegurado
-          "Importe": 350.0,  # Valor fijo asegurado
+          "Concepto": "Fotografía Navidad 2026",
+          "Importe": 350.0,
           "Atendio": atendio,
           "Fecha": fecha_hora_actual,
       }
@@ -291,25 +309,23 @@ def app():
     with col_si:
       if st.button("Sí, Confirmar"):
         datos = st.session_state["pending_compra"]
-        try:
-          zona_mexico = ZoneInfo("America/Mexico_City")
-          folio = datetime.now(zona_mexico).strftime("%Y%m%d%H%M%S")
-        except Exception:
-          folio = datetime.now().strftime("%Y%m%d%H%M%S")
 
+        # Generar folio consecutivo automático (0001, 0002, etc.)
+        folio = obtener_siguiente_folio()
         datos["Folio"] = folio
 
-        csv_path = "assets/registros_compras.csv"
         os.makedirs("assets", exist_ok=True)
-        if os.path.exists(csv_path):
-          df_reg = pd.read_csv(csv_path)
+        if os.path.exists(CSV_PATH):
+          df_reg = pd.read_csv(CSV_PATH)
           df_reg = pd.concat([df_reg, pd.DataFrame([datos])], ignore_index=True)
         else:
           df_reg = pd.DataFrame([datos])
-        df_reg.to_csv(csv_path, index=False)
+        df_reg.to_csv(CSV_PATH, index=False)
 
         pdf_path = generar_ticket_pdf(datos, folio)
-        st.success(f"¡Compra realizada con éxito! Folio generado: {folio}")
+        st.success(
+            f"¡Compra realizada con éxito! Folio asignado: #{folio}"
+        )
         st.session_state["show_confirm"] = False
 
         lineas = []
@@ -349,6 +365,7 @@ def app():
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
+        # Configuración optimizada a 48mm x 210mm con tamaño de letra ajustado a 10.5px
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -415,9 +432,9 @@ def app():
                     margin: 0 auto;
                     padding: 0;
                     font-family: inherit;
-                    font-size: 11px;
+                    font-size: 10.5px; /* Letra ajustada y optimizada para el espacio */
                     font-weight: bold;
-                    line-height: 1.15;
+                    line-height: 1.2;
                     display: inline-block;
                     text-align: left;
                     color: #000;

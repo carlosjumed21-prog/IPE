@@ -112,7 +112,7 @@ def obtener_siguiente_folio():
 
 
 def guardar_en_google_sheets(datos):
-    """Sincroniza la venta en la pestaña correspondiente del Google Sheet empezando desde la fila 2."""
+    """Sincroniza la venta insertando exactamente en la siguiente fila disponible de la tabla de la hoja."""
     try:
         scope = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -130,15 +130,12 @@ def guardar_en_google_sheets(datos):
         except Exception:
             worksheet = sh.sheet1
 
-        existing_data = worksheet.get_all_values()
-        
-        # Si la hoja está vacía, el consecutivo de la fila de datos es 1. Si ya tiene encabezados u otros registros, calculamos el correlativo.
-        if len(existing_data) <= 1:
-            siguiente_id = 1
-        else:
-            siguiente_id = len(existing_data)
+        # Obtenemos los valores de la columna A para calcular la fila exacta libre y evitar celdas fantasma
+        columna_a = worksheet.col_values(1)
+        siguiente_fila = len(columna_a) + 1
+        siguiente_id = len(columna_a) if len(columna_a) > 0 else 1
 
-        # Orden estricto: # (Col A), Folio (Col B), Nombre (Col C), Fecha (Col D), Importe (Col E), Atendio (Col F)
+        # Orden estricto: Col A (#), Col B (Folio), Col C (Nombre), Col D (Fecha), Col E (Importe), Col F (Atendio)
         nueva_fila = [
             siguiente_id,
             datos["Folio"],
@@ -147,7 +144,9 @@ def guardar_en_google_sheets(datos):
             datos["Importe"],
             datos["Atendio"],
         ]
-        worksheet.append_row(nueva_fila)
+
+        rango_celda = f"A{siguiente_fila}:F{siguiente_fila}"
+        worksheet.update(rango_celda, [nueva_fila])
         return True
     except Exception as e:
         print(f"Error al sincronizar con Google Sheets: {e}")
@@ -274,6 +273,10 @@ def obtener_imagen_base64(ruta_imagen):
 def app():
     st.subheader("📝 Registrar Nueva Compra")
 
+    # Inicializar estado de procesamiento si no existe
+    if "is_processing" not in st.session_state:
+        st.session_state["is_processing"] = False
+
     dic_grupos, error = cargar_alumnos_por_grupos()
     if error:
         st.error(f"Error al cargar el archivo de Excel: {error}")
@@ -336,7 +339,7 @@ def app():
         elif not nombre_alumno:
             st.warning("⚠️ Por favor seleccione un alumno.")
         elif not atendio:
-            st.warning("⚠️ Por favor seleccione quién atendió.")
+            st.warning("⚠️ Por favor seleccione quién atiende.")
         else:
             fecha_hora_actual = obtener_fecha_hora_actual()
             st.session_state["pending_compra"] = {
@@ -354,7 +357,13 @@ def app():
         col_si, col_no = st.columns(2)
 
         with col_si:
-            if st.button("Sí, Confirmar"):
+            # Botón inhabilitado automáticamente mientras se procesa para evitar registros dobles
+            if st.button(
+                "Sí, Confirmar",
+                disabled=st.session_state["is_processing"],
+                key="btn_confirmar_venta",
+            ):
+                st.session_state["is_processing"] = True
                 datos = st.session_state["pending_compra"]
 
                 folio = obtener_siguiente_folio()
@@ -385,6 +394,7 @@ def app():
                     )
 
                 st.session_state["show_confirm"] = False
+                st.session_state["is_processing"] = False
 
                 pdf_path = generar_ticket_pdf(datos, folio)
 
@@ -535,9 +545,10 @@ def app():
 
                 st.markdown("### 🖨️ Vista Previa del Ticket (48x250 mm)")
                 st.components.v1.html(html_ticket_preview, height=620, scrolling=True)
+                st.rerun()
 
         with col_no:
-            if st.button("No, Regresar"):
-                st.info("Captura canada. Puede modificar los datos.")
+            if st.button("No, Regresar", disabled=st.session_state["is_processing"]):
+                st.info("Captura cancelada. Puede modificar los datos.")
                 st.session_state["show_confirm"] = False
                 st.rerun()

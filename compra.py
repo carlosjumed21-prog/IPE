@@ -112,7 +112,7 @@ def obtener_siguiente_folio():
 
 
 def guardar_en_google_sheets(datos):
-    """Sincroniza la venta en la pestaña correspondiente del Google Sheet respetando el orden de columnas exacto."""
+    """Sincroniza la venta en la pestaña correspondiente del Google Sheet empezando desde la fila 2."""
     try:
         scope = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -131,9 +131,14 @@ def guardar_en_google_sheets(datos):
             worksheet = sh.sheet1
 
         existing_data = worksheet.get_all_values()
-        siguiente_id = len(existing_data) if len(existing_data) > 0 else 1
+        
+        # Si la hoja está vacía, el consecutivo de la fila de datos es 1. Si ya tiene encabezados u otros registros, calculamos el correlativo.
+        if len(existing_data) <= 1:
+            siguiente_id = 1
+        else:
+            siguiente_id = len(existing_data)
 
-        # Orden estricto solicitado: # (Col A), Folio (Col B), Nombre (Col C), Fecha (Col D), Importe (Col E), Atendio (Col F)
+        # Orden estricto: # (Col A), Folio (Col B), Nombre (Col C), Fecha (Col D), Importe (Col E), Atendio (Col F)
         nueva_fila = [
             siguiente_id,
             datos["Folio"],
@@ -533,6 +538,6 @@ def app():
 
         with col_no:
             if st.button("No, Regresar"):
-                st.info("Captura cancelada. Puede modificar los datos.")
+                st.info("Captura canada. Puede modificar los datos.")
                 st.session_state["show_confirm"] = False
                 st.rerun()

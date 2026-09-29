@@ -12,55 +12,53 @@ QR_PATH = "assets/qr_ticket.png"
 
 
 @st.cache_data
-def cargar_alumnos_por_pestanas():
-  """Carga los alumnos desde las hojas del 1 al 15, leyendo desde la columna 10 (J) en adelante.
+def cargar_alumnos_por_grupos():
+  """Carga los alumnos por cada hoja (grupo), leyendo desde la columna B (índice 1)
 
-  Retorna un DataFrame consolidado con columnas: ['Alumno', 'Grupo']
+  a partir de la fila 10 (índice 9) hasta la última fila existente.
+  Retorna un diccionario donde la clave es el Grupo y el valor es la lista de alumnos.
   """
   if not os.path.exists(EXCEL_PATH):
-    return (
-        None,
-        f"No se encontró el archivo de Excel en la ruta: {EXCEL_PATH}",
-    )
+    return None, f"No se encontró el archivo de Excel en la ruta: {EXCEL_PATH}"
 
   try:
     xls = pd.ExcelFile(EXCEL_PATH)
     todas_hojas = xls.sheet_names
-    lista_registros = []
+    datos_grupos = {}
 
-    # Iteramos sobre las hojas (grupos del 1 al 15)
     for hoja in todas_hojas:
+      # Leemos la hoja completa sin cabecera fija
       df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
 
-      # La columna 10 corresponde al índice 9 (A=0, B=1, ..., J=9)
-      if df_hoja.shape[1] > 9:
-        df_columnas_interes = df_hoja.iloc[:, 9:]
+      # Validamos que la hoja tenga al menos la columna B (índice 1) y 10 filas (índice 9)
+      if df_hoja.shape[0] > 9 and df_hoja.shape[1] > 1:
+        # Extraemos desde la fila 10 en adelante (índice 9:) de la columna B (índice 1)
+        columna_b_desde_fila_10 = df_hoja.iloc[9:, 1]
 
-        for col in df_columnas_interes.columns:
-          for val in df_columnas_interes[col].dropna():
-            nombre_limpio = str(val).strip()
-            if nombre_limpio and nombre_limpio.lower() not in [
-                "nan",
-                "nombre",
-                "alumnos",
-                "none",
-            ]:
-              lista_registros.append(
-                  {"Alumno": nombre_limpio, "Grupo": str(hoja)}
-              )
+        lista_alumnos = []
+        for val in columna_b_desde_fila_10.dropna():
+          nombre_limpio = str(val).strip()
+          if nombre_limpio and nombre_limpio.lower() not in [
+              "nan",
+              "nombre",
+              "alumnos",
+              "none",
+              "alumno",
+          ]:
+            lista_alumnos.append(nombre_limpio)
 
-    if not lista_registros:
+        if lista_alumnos:
+          # Ordenamos alfabéticamente y eliminamos duplicados
+          datos_grupos[str(hoja)] = sorted(list(set(lista_alumnos)))
+
+    if not datos_grupos:
       return (
           None,
-          "No se encontraron alumnos a partir de la columna 10 en las hojas.",
+          "No se encontraron alumnos en la columna B (desde la fila 10) en las"
+          " hojas.",
       )
 
-    df_consolidado = pd.DataFrame(lista_registros)
-    df_consolidado = df_consolidado.drop_duplicates(
-        subset=["Alumno"]
-    ).reset_index(drop=True)
-
-    return df_consolidado, None
+    return datos_grupos, None
 
   except Exception as e:
     return None, f"Error al procesar el archivo Excel: {str(e)}"
@@ -175,26 +173,27 @@ def generar_ticket_pdf(datos_compra, folio):
 def app():
   st.subheader("📝 Registrar Nueva Compra")
 
-  df_alumnos, error = cargar_alumnos_por_pestanas()
+  dic_grupos, error = cargar_alumnos_por_grupos()
   if error:
     st.error(f"Error al cargar el archivo de Excel: {error}")
     return
 
   with st.form("form_compra"):
-    lista_nombres = sorted(df_alumnos["Alumno"].unique().tolist())
-    nombre_alumno = st.selectbox(
-        "Nombre del alumno:",
-        options=lista_nombres,
-        index=0 if lista_nombres else None,
+    # 1. Menú desplegable de Grupos (basado en los nombres de las hojas)
+    lista_grupos = sorted(list(dic_grupos.keys()))
+    grupo_seleccionado = st.selectbox(
+        "Seleccione el Grupo:",
+        options=lista_grupos,
+        index=0 if lista_grupos else None,
     )
 
-    grupo_asignado = ""
-    if nombre_alumno:
-      fila = df_alumnos[df_alumnos["Alumno"] == nombre_alumno]
-      if not fila.empty:
-        grupo_asignado = str(fila.iloc[0]["Grupo"])
-
-    st.text_input("Grupo (Automático):", value=grupo_asignado, disabled=True)
+    # 2. Menú desplegable de Alumnos acorde al grupo seleccionado (Columna B desde fila 10)
+    lista_alumnos = dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
+    nombre_alumno = st.selectbox(
+        "Nombre del alumno:",
+        options=lista_alumnos,
+        index=0 if lista_alumnos else None,
+    )
 
     st.markdown("---")
     concepto = st.text_input("Concepto:", value="Fotografía Navidad 2026")
@@ -212,15 +211,18 @@ def app():
     submitted = st.form_submit_button("Confirmar Compra")
 
   if submitted:
-    st.session_state["pending_compra"] = {
-        "Alumno": nombre_alumno,
-        "Grupo": grupo_asignado,
-        "Concepto": concepto,
-        "Importe": importe,
-        "Atendio": atendio,
-        "Fecha": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M"),
-    }
-    st.session_state["show_confirm"] = True
+    if not nombre_alumno:
+      st.warning("Por favor seleccione un alumno válido.")
+    else:
+      st.session_state["pending_compra"] = {
+          "Alumno": nombre_alumno,
+          "Grupo": grupo_seleccionado,
+          "Concepto": concepto,
+          "Importe": importe,
+          "Atendio": atendio,
+          "Fecha": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M"),
+      }
+      st.session_state["show_confirm"] = True
 
   if st.session_state.get("show_confirm", False):
     st.warning("⚠️ ¿Está seguro de confirmar y registrar esta compra?")

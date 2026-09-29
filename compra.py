@@ -7,12 +7,14 @@ from reportlab.lib.pagesizes import mm
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 EXCEL_PATH = "assets/alumnosprimaria.xlsx"
 FOLIOS_DIR = "assets/folios"
 LOGO_PATH = "assets/logo.png"
 QR_PATH = "assets/qr_ticket.png"
 CSV_PATH = "assets/registros_compras.csv"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1O8kzQuR1Um2BbVO5rcEDbgZWauSPto_2uI8rM_JVdUg/edit?usp=sharing"
 
 
 @st.cache_data
@@ -108,6 +110,42 @@ def obtener_siguiente_folio():
     return f"{prefijo_base}{siguiente_secuencia:03d}"
 
 
+def guardar_en_google_sheets(datos):
+    """Sincroniza la venta en la pestaña correspondiente del Google Sheet oficial."""
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        # Leemos la hoja correspondiente al grupo
+        # Nota: gspread permite acceder a hojas por nombre
+        # Usamos client de gspread para insertar directamente en la pestaña del grupo
+        client = conn.client
+        sh = client.open_by_url(sheet_url=SHEET_URL)
+        
+        grupo_hoja = str(datos["Grupo"])
+        try:
+            worksheet = sh.worksheet(grupo_hoja)
+        except Exception:
+            # Si la pestaña no existe por alguna razón, usa la primera o avisa
+            worksheet = sh.sheet1
+
+        # Estructura requerida: # | Nombre de alumno | Folio | Fecha y Hora | Importe
+        # Determinamos el número consecutivo en la hoja
+        existing_data = worksheet.get_all_values()
+        siguiente_id = len(existing_data) if len(existing_data) > 0 else 1
+
+        nueva_fila = [
+            siguiente_id,
+            datos["Alumno"],
+            datos["Folio"],
+            datos["Fecha"],
+            datos["Importe"]
+        ]
+        worksheet.append_row(nueva_fila)
+        return True
+    except Exception as e:
+        print(f"Error al sincronizar con Google Sheets: {e}")
+        return False
+
+
 def generar_ticket_pdf(datos_compra, folio):
     """Genera el ticket en PDF con tamaño físico de 48mm x 250mm y QR abajo."""
     os.makedirs(FOLIOS_DIR, exist_ok=True)
@@ -148,7 +186,6 @@ def generar_ticket_pdf(datos_compra, folio):
         textColor="#000000",
     )
 
-    # Logo arriba centrado
     if os.path.exists(LOGO_PATH):
         try:
             img_logo = Image(LOGO_PATH, width=18 * mm, height=7 * mm)
@@ -203,7 +240,6 @@ def generar_ticket_pdf(datos_compra, folio):
     story.append(Paragraph("================================", style_mono_centro))
     story.append(Spacer(1, 6))
 
-    # Código QR abajo centrado en el PDF
     if os.path.exists(QR_PATH):
         try:
             img_qr = Image(QR_PATH, width=18 * mm, height=18 * mm)
@@ -316,6 +352,7 @@ def app():
                 folio = obtener_siguiente_folio()
                 datos["Folio"] = folio
 
+                # 1. Guardar localmente en CSV como respaldo
                 os.makedirs("assets", exist_ok=True)
                 if os.path.exists(CSV_PATH):
                     df_reg = pd.read_csv(CSV_PATH)
@@ -326,9 +363,22 @@ def app():
                     df_reg = pd.DataFrame([datos])
                 df_reg.to_csv(CSV_PATH, index=False)
 
-                pdf_path = generar_ticket_pdf(datos, folio)
-                st.success(f"¡Compra realizada con éxito! Folio asignado: #{folio}")
+                # 2. Sincronizar en Google Sheets oficial
+                sheet_ok = guardar_en_google_sheets(datos)
+                if sheet_ok:
+                    st.success(
+                        f"¡Compra realizada y sincronizada en Google Sheets! Folio:"
+                        f" #{folio}"
+                    )
+                else:
+                    st.warning(
+                        f"Compra guardada localmente, pero hubo un error al"
+                        f" sincronizar con Google Sheets. Folio: #{folio}"
+                    )
+
                 st.session_state["show_confirm"] = False
+
+                pdf_path = generar_ticket_pdf(datos, folio)
 
                 lineas = []
                 lineas.append("==================")

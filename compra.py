@@ -5,39 +5,79 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 import streamlit as st
 
-EXCEL_PATH = "assets/datos_alumnos.xlsx"
+EXCEL_PATH = "assets/alumnos primaria.xlsx"
 FOLIOS_DIR = "assets/folios"
 LOGO_PATH = "assets/logo.png"
 QR_PATH = "assets/qr_ticket.png"
 
 
 @st.cache_data
-def cargar_datos_alumnos():
-  """Carga los alumnos y su grupo desde la pestaña de alojamiento del Excel."""
+def cargar_alumnos_por_pestanas():
+  """Carga los alumnos desde las hojas del 1 al 15, leyendo desde la columna 10 (J) en adelante.
+
+  Retorna un DataFrame consolidado con columnas: ['Alumno', 'Grupo']
+  """
   if not os.path.exists(EXCEL_PATH):
-    return None, f"No se encontró el archivo en {EXCEL_PATH}"
+    return (
+        None,
+        f"No se encontró el archivo de Excel en la ruta: {EXCEL_PATH}",
+    )
+
   try:
     xls = pd.ExcelFile(EXCEL_PATH)
-    hojas = xls.sheet_names
-    hoja_alojamiento = (
-        'alojamiento'
-        if 'alojamiento' in [h.lower() for h in hojas]
-        else hojas[0]
-    )
-    df = pd.read_excel(EXCEL_PATH, sheet_name=hoja_alojamiento)
-    return df, None
+    todas_hojas = xls.sheet_names
+    lista_registros = []
+
+    # Iteramos sobre las hojas del 1 al 15 (o las que existan que coincidan o todas las disponibles)
+    for hoja in todas_hojas:
+      # Leemos la hoja sin cabecera fija para manipular celdas por índice (base 0)
+      df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
+
+      # La columna 10 corresponde al índice 9 (A=0, B=1, ..., J=9)
+      if df_hoja.shape[1] > 9:
+        # Extraemos desde la columna 10 (índice 9) hasta el final de las columnas
+        df_columnas_interes = df_hoja.iloc[:, 9:]
+
+        # Recorremos todas las celdas de esas columnas para extraer nombres de alumnos válidos
+        for col in df_columnas_interes.columns:
+          for val in df_columnas_interes[col].dropna():
+            nombre_limpio = str(val).strip()
+            # Filtramos valores vacíos o encabezados numéricos/raros si los hubiera
+            if nombre_limpio and nombre_limpio.lower() not in [
+                "nan",
+                "nombre",
+                "alumnos",
+                "none",
+            ]:
+              lista_registros.append(
+                  {"Alumno": nombre_limpio, "Grupo": str(hoja)}
+              )
+
+    if not lista_registros:
+      return (
+          None,
+          "No se encontraron alumnos a partir de la columna 10 en las hojas.",
+      )
+
+    df_consolidado = pd.DataFrame(lista_registros)
+    # Eliminamos duplicados por si acaso aparecieran repetidos
+    df_consolidado = df_consolidado.drop_duplicates(
+        subset=["Alumno"]
+    ).reset_index(drop=True)
+
+    return df_consolidado, None
+
   except Exception as e:
-    return None, str(e)
+    return None, f"Error al procesar el archivo Excel: {str(e)}"
 
 
 def generar_ticket_pdf(datos_compra, folio):
-  """Genera el ticket en PDF con formato térmico estricto de 80mm adaptado del script de Apps Script."""
+  """Genera el ticket en PDF con formato térmico estricto de 80mm."""
   os.makedirs(FOLIOS_DIR, exist_ok=True)
   pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio}.pdf")
 
-  # Ancho estándar de ticket térmico: 80 mm (~226.77 puntos)
   ancho_ticket = 80 * mm
-  alto_ticket = 180 * mm  # Altura dinámica suficiente para el contenido
+  alto_ticket = 180 * mm
 
   doc = SimpleDocTemplate(
       pdf_path,
@@ -51,125 +91,84 @@ def generar_ticket_pdf(datos_compra, folio):
   story = []
   styles = getSampleStyleSheet()
 
-  # Estilos tipográficos inspirados en la configuración CSS térmica (Courier / Monospace)
   style_mono_centro = ParagraphStyle(
-      'TicketCentro',
-      parent=styles['Normal'],
-      fontName='Courier-Bold',
+      "TicketCentro",
+      parent=styles["Normal"],
+      fontName="Courier-Bold",
       fontSize=8.5,
       leading=11,
-      alignment=1,  # Centrado
-      textColor='#000000',
+      alignment=1,
+      textColor="#000000",
   )
 
   style_mono_izq = ParagraphStyle(
-      'TicketIzquierda',
-      parent=styles['Normal'],
-      fontName='Courier-Bold',
+      "TicketIzquierda",
+      parent=styles["Normal"],
+      fontName="Courier-Bold",
       fontSize=8.5,
       leading=11,
-      alignment=0,  # Izquierda
-      textColor='#000000',
+      alignment=0,
+      textColor="#000000",
   )
 
-  # 1. Imagen inicial (Logotipo institucional en assets/logo.png)
   if os.path.exists(LOGO_PATH):
     try:
       img_logo = Image(LOGO_PATH, width=35 * mm, height=12 * mm)
-      img_logo.hAlign = 'CENTER'
+      img_logo.hAlign = "CENTER"
       story.append(img_logo)
       story.append(Spacer(1, 4))
     except Exception:
       pass
 
-  # Encabezado térmico
-  story.append(
-      Paragraph("================================", style_mono_centro)
-  )
+  story.append(Paragraph("================================", style_mono_centro))
   story.append(Paragraph("    FOTOGRAFÍA NAVIDAD 2026   ", style_mono_centro))
   story.append(Paragraph("   ¡Gracias por su compra!    ", style_mono_centro))
-  story.append(
-      Paragraph("================================", style_mono_centro)
-  )
+  story.append(Paragraph("================================", style_mono_centro))
 
-  # Datos del ticket
   story.append(Paragraph(f"Ticket: #{folio}", style_mono_izq))
   story.append(Paragraph(f"Fecha: {datos_compra['Fecha']}", style_mono_izq))
   story.append(Paragraph(f"Cliente: {datos_compra['Alumno']}", style_mono_izq))
   story.append(Paragraph(f"Grupo: {datos_compra['Grupo']}", style_mono_izq))
-  story.append(
-      Paragraph("--------------------------------", style_mono_centro)
-  )
+  story.append(Paragraph("--------------------------------", style_mono_centro))
 
-  # Detalle de productos / conceptos
-  story.append(
-      Paragraph("CANT DESCRIPCIÓN          P.UNIT", style_mono_izq)
-  )
-  story.append(
-      Paragraph("            TOTAL               ", style_mono_izq)
-  )
-  story.append(
-      Paragraph("--------------------------------", style_mono_centro)
-  )
+  story.append(Paragraph("CANT DESCRIPCIÓN          P.UNIT", style_mono_izq))
+  story.append(Paragraph("            TOTAL               ", style_mono_izq))
+  story.append(Paragraph("--------------------------------", style_mono_centro))
 
-  # Ítem de compra formateado como el script térmico
   cant_str = "1".ljust(3)
   desc_str = datos_compra["Concepto"][:14].ljust(14)
   precio_str = f"${datos_compra['Importe']:.2f}".rjust(8)
   total_str = f"${datos_compra['Importe']:.2f}".rjust(12)
 
-  story.append(
-      Paragraph(f"{cant_str} {desc_str} {precio_str}", style_mono_izq)
-  )
+  story.append(Paragraph(f"{cant_str} {desc_str} {precio_str}", style_mono_izq))
   story.append(Paragraph(f"            {total_str}", style_mono_izq))
-  story.append(
-      Paragraph("--------------------------------", style_mono_centro)
-  )
+  story.append(Paragraph("--------------------------------", style_mono_centro))
 
-  # Totales
   subtotal = datos_compra["Importe"]
   story.append(
       Paragraph(
-          f"SUBTOTAL:         "
-          + f"${subtotal:.2f}".rjust(13),
-          style_mono_izq,
+          f"SUBTOTAL:         " + f"${subtotal:.2f}".rjust(13), style_mono_izq
       )
   )
   story.append(
       Paragraph(
-          f"TOTAL A PAGAR:    "
-          + f"${subtotal:.2f}".rjust(13),
-          style_mono_izq,
+          f"TOTAL A PAGAR:    " + f"${subtotal:.2f}".rjust(13), style_mono_izq
       )
   )
-  story.append(
-      Paragraph("================================", style_mono_centro)
-  )
+  story.append(Paragraph("================================", style_mono_centro))
 
-  # Pie de ticket
-  story.append(
-      Paragraph("   Atendió: " + datos_compra["Atendio"], style_mono_izq)
-  )
+  story.append(Paragraph("   Atendió: " + datos_compra["Atendio"], style_mono_izq))
   story.append(Spacer(1, 2))
-  story.append(
-      Paragraph("  Conserve su ticket para       ", style_mono_centro)
-  )
-  story.append(
-      Paragraph("   cualquier aclaración.        ", style_mono_centro)
-  )
-  story.append(
-      Paragraph("       ¡Vuelva pronto!          ", style_mono_centro)
-  )
-  story.append(
-      Paragraph("================================", style_mono_centro)
-  )
+  story.append(Paragraph("  Conserve su ticket para       ", style_mono_centro))
+  story.append(Paragraph("   cualquier aclaración.        ", style_mono_centro))
+  story.append(Paragraph("       ¡Vuelva pronto!          ", style_mono_centro))
+  story.append(Paragraph("================================", style_mono_centro))
   story.append(Spacer(1, 6))
 
-  # 2. Código QR al final (leído desde assets/qr_ticket.png)
   if os.path.exists(QR_PATH):
     try:
       img_qr = Image(QR_PATH, width=24 * mm, height=24 * mm)
-      img_qr.hAlign = 'CENTER'
+      img_qr.hAlign = "CENTER"
       story.append(img_qr)
     except Exception:
       pass
@@ -181,71 +180,66 @@ def generar_ticket_pdf(datos_compra, folio):
 def app():
   st.subheader("📝 Registrar Nueva Compra")
 
-  df_excel, error = cargar_datos_alumnos()
+  df_alumnos, error = cargar_alumnos_por_pestanas()
   if error:
     st.error(f"Error al cargar el archivo de Excel: {error}")
     return
 
-  columnas = [c.strip() for c in df_excel.columns]
-  col_nombre = next(
-      (c for c in columnas if 'nombre' in c.lower() or 'alumno' in c.lower()),
-      columnas[0],
-  )
-  col_grupo = next(
-      (c for c in columnas if 'grupo' in c.lower() or 'alojamiento' in c.lower()),
-      columnas[1] if len(columnas) > 1 else columnas[0],
-  )
+  with st.form("form_compra"):
+    lista_nombres = sorted(df_alumnos["Alumno"].unique().tolist())
+    nombre_alumno = st.selectbox(
+        "Nombre del alumno:",
+        options=lista_nombres,
+        index=0 if lista_nombres else None,
+    )
 
-  with st.form('form_compra'):
-    lista_alumnos = sorted(df_excel[col_nombre].dropna().astype(str).unique())
-    nombre_alumno = st.selectbox('Nombre del alumno:', options=lista_alumnos)
-
-    grupo_asignado = ''
+    # Grupo: se llena automáticamente acorde a la hoja donde se localizó el alumno
+    grupo_asignado = ""
     if nombre_alumno:
-      fila = df_excel[df_excel[col_nombre].astype(str) == nombre_alumno]
+      fila = df_alumnos[df_alumnos["Alumno"] == nombre_alumno]
       if not fila.empty:
-        grupo_asignado = str(fila.iloc[0][col_grupo])
+        grupo_asignado = str(fila.iloc[0]["Grupo"])
 
-    st.text_input('Grupo (Automático):', value=grupo_asignado, disabled=True)
+    st.text_input("Grupo (Automático):", value=grupo_asignado, disabled=True)
 
-    st.markdown('---')
-    concepto = st.text_input('Concepto:', value='Fotografía Navidad 2026')
-    importe = st.number_input('Importe ($):', value=350.0, format='%.2f')
+    st.markdown("---")
+    concepto = st.text_input("Concepto:", value="Fotografía Navidad 2026")
+    importe = st.number_input("Importe ($):", value=350.0, format="%.2f")
 
     atendio = st.selectbox(
-        'Quién atendió:',
+        "Quién atendió:",
         options=[
-            'Victoria Garcia Valencia',
-            'Jose Francisco Resendiz',
-            'Grecia Ramirez Arenas',
+            "Victoria Garcia Valencia",
+            "Jose Francisco Resendiz",
+            "Grecia Ramirez Arenas",
         ],
     )
 
-    submitted = st.form_submit_button('Confirmar Compra')
+    submitted = st.form_submit_button("Confirmar Compra")
 
   if submitted:
-    st.session_state['pending_compra'] = {
-        'Alumno': nombre_alumno,
-        'Grupo': grupo_asignado,
-        'Concepto': concepto,
-        'Importe': importe,
-        'Atendio': atendio,
-        'Fecha': pd.Timestamp.now().strftime('%d/%MM/yyyy %H:%M'),
+    st.session_state["pending_compra"] = {
+        "Alumno": nombre_alumno,
+        "Grupo": grupo_asignado,
+        "Concepto": concepto,
+        "Importe": importe,
+        "Atendio": atendio,
+        "Fecha": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M"),
     }
-    st.session_state['show_confirm'] = True
+    st.session_state["show_confirm"] = True
 
-  if st.session_state.get('show_confirm', False):
-    st.warning('⚠️ ¿Está seguro de confirmar y registrar esta compra?')
+  if st.session_state.get("show_confirm", False):
+    st.warning("⚠️ ¿Está seguro de confirmar y registrar esta compra?")
     col_si, col_no = st.columns(2)
 
     with col_si:
-      if st.button('Sí, Confirmar'):
-        datos = st.session_state['pending_compra']
-        folio = pd.Timestamp.now().strftime('%Y%m%d%H%M%S')
-        datos['Folio'] = folio
+      if st.button("Sí, Confirmar"):
+        datos = st.session_state["pending_compra"]
+        folio = pd.Timestamp.now().strftime("%Y%m%d%H%M%S")
+        datos["Folio"] = folio
 
-        csv_path = 'assets/registros_compras.csv'
-        os.makedirs('assets', exist_ok=True)
+        csv_path = "assets/registros_compras.csv"
+        os.makedirs("assets", exist_ok=True)
         if os.path.exists(csv_path):
           df_reg = pd.read_csv(csv_path)
           df_reg = pd.concat([df_reg, pd.DataFrame([datos])], ignore_index=True)
@@ -255,19 +249,19 @@ def app():
 
         pdf_path = generar_ticket_pdf(datos, folio)
 
-        st.success(f'¡Compra realizada con éxito! Folio generado: {folio}')
-        st.session_state['show_confirm'] = False
+        st.success(f"¡Compra realizada con éxito! Folio generado: {folio}")
+        st.session_state["show_confirm"] = False
 
-        with open(pdf_path, 'rb') as f:
+        with open(pdf_path, "rb") as f:
           st.download_button(
-              label='🖨️ Imprimir Ticket Térmico (Descargar PDF)',
+              label="🖨️ Imprimir Ticket Térmico (Descargar PDF)",
               data=f,
-              file_name=f'ticket_{folio}.pdf',
-              mime='application/pdf',
+              file_name=f"ticket_{folio}.pdf",
+              mime="application/pdf",
           )
 
     with col_no:
-      if st.button('No, Regresar'):
-        st.info('Captura cancelada. Puede modificar los datos.')
-        st.session_state['show_confirm'] = False
+      if st.button("No, Regresar"):
+        st.info("Captura cancelada. Puede modificar los datos.")
+        st.session_state["show_confirm"] = False
         st.rerun()

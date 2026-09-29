@@ -75,13 +75,13 @@ def obtener_fecha_hora_actual():
 
 
 def generar_ticket_pdf(datos_compra, folio):
-  """Genera el ticket en PDF con tamaño físico exacto de 48mm x 120mm."""
+  """Genera el ticket en PDF con tamaño físico exacto de 48mm x 210mm."""
   os.makedirs(FOLIOS_DIR, exist_ok=True)
   pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio}.pdf")
 
-  # Altura reducida a 120mm para evitar tiras de papel muy largas
+  # Medida correcta restaurada a 48mm x 210mm
   ancho_ticket = 48 * mm
-  alto_ticket = 120 * mm
+  alto_ticket = 210 * mm
 
   doc = SimpleDocTemplate(
       pdf_path,
@@ -338,7 +338,6 @@ def app():
         lineas.append(datos["Atendio"])
         lineas.append("¡Vuelva pronto!")
         lineas.append("==================")
-        # Saltos controlados al final para el corte limpio de la impresora térmica
         lineas.append("\n\n")
 
         texto_ticket_html = "\n".join(lineas)
@@ -346,7 +345,7 @@ def app():
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # Configuración de impresión a 48mm x 120mm exactos
+        # Configuración de impresión restaurada a 48mm x 210mm exactos
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -361,7 +360,7 @@ def app():
                       background: #fff !important;
                     }}
                     @page {{
-                      size: 48mm 120mm;
+                      size: 48mm 210mm;
                       margin: 0mm;
                     }}
                     .btn-print {{ display: none !important; }}
@@ -456,7 +455,7 @@ def app():
                 </html>
                 """
 
-        st.markdown("### 🖨️ Vista Previa del Ticket (48x120 mm)")
+        st.markdown("### 🖨️ Vista Previa del Ticket (48x210 mm)")
         st.components.v1.html(html_ticket_preview, height=580, scrolling=True)
 
     with col_no:

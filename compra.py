@@ -76,30 +76,48 @@ def obtener_fecha_hora_actual():
 
 
 def obtener_siguiente_folio():
-  """Calcula el folio consecutivo con continuidad (0001, 0002, etc.)."""
+  """Calcula el folio con formato AAAAMMDD-IPE-001 con continuidad diaria."""
+  try:
+    zona_mexico = ZoneInfo("America/Mexico_City")
+    hoy_str = datetime.now(zona_mexico).strftime("%Y%m%d")
+  except Exception:
+    hoy_str = datetime.now().strftime("%Y%m%d")
+
+  prefijo_base = f"{hoy_str}-IPE-"
+  siguiente_secuencia = 1
+
   if os.path.exists(CSV_PATH):
     try:
       df_reg = pd.read_csv(CSV_PATH)
       if "Folio" in df_reg.columns and not df_reg.empty:
-        # Filtramos solo los que sean puramente numéricos para evitar errores
-        folios_numericos = pd.to_numeric(
-            df_reg["Folio"], errors="coerce"
-        ).dropna()
-        if not folios_numericos.empty:
-          ultimo_folio = int(folios_numericos.max())
-          return f"{ultimo_folio + 1:04d}"
+        # Filtramos los folios que correspondan al día de hoy con este prefijo
+        folios_hoy = df_reg[
+            df_reg["Folio"].astype(str).str.startswith(prefijo_base)
+        ]
+        if not folios_hoy.empty:
+          # Extraemos los números secuenciales del final
+          secuencias = []
+          for f in folios_hoy["Folio"]:
+            try:
+              num = int(str(f).split("-")[-1])
+              secuencias.append(num)
+            except Exception:
+              pass
+          if secuencias:
+            siguiente_secuencia = max(secuencias) + 1
     except Exception:
       pass
-  return "0001"
+
+  return f"{prefijo_base}{siguiente_secuencia:03d}"
 
 
 def generar_ticket_pdf(datos_compra, folio):
-  """Genera el ticket en PDF con tamaño físico exacto de 48mm x 210mm."""
+  """Genera el ticket en PDF con tamaño físico ampliado a 48mm x 250mm para evitar cortes."""
   os.makedirs(FOLIOS_DIR, exist_ok=True)
-  pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio}.pdf")
+  pdf_path = os.path.join(FOLIOS_DIR, f"ticket_{folio.replace('/', '-')}.pdf")
 
   ancho_ticket = 48 * mm
-  alto_ticket = 210 * mm
+  alto_ticket = 250 * mm  # Ampliado a 250mm para asegurar que no se corte el final
 
   doc = SimpleDocTemplate(
       pdf_path,
@@ -107,7 +125,7 @@ def generar_ticket_pdf(datos_compra, folio):
       rightMargin=2 * mm,
       leftMargin=2 * mm,
       topMargin=4 * mm,
-      bottomMargin=4 * mm,
+      bottomMargin=6 * mm,
   )
 
   story = []
@@ -289,7 +307,7 @@ def app():
     elif not nombre_alumno:
       st.warning("⚠️ Por favor seleccione un alumno.")
     elif not atendio:
-      st.warning("⚠️ Por favor seleccione quién atiende.")
+      st.warning("⚠️ Por favor seleccione quién atendió.")
     else:
       fecha_hora_actual = obtener_fecha_hora_actual()
       st.session_state["pending_compra"] = {
@@ -310,7 +328,7 @@ def app():
       if st.button("Sí, Confirmar"):
         datos = st.session_state["pending_compra"]
 
-        # Generar folio consecutivo automático (0001, 0002, etc.)
+        # Folio con formato AAAAMMDD-IPE-001 consecutivo
         folio = obtener_siguiente_folio()
         datos["Folio"] = folio
 
@@ -323,9 +341,7 @@ def app():
         df_reg.to_csv(CSV_PATH, index=False)
 
         pdf_path = generar_ticket_pdf(datos, folio)
-        st.success(
-            f"¡Compra realizada con éxito! Folio asignado: #{folio}"
-        )
+        st.success(f"¡Compra realizada con éxito! Folio asignado: #{folio}")
         st.session_state["show_confirm"] = False
 
         lineas = []
@@ -358,14 +374,14 @@ def app():
         lineas.append(datos["Atendio"])
         lineas.append("¡Vuelva pronto!")
         lineas.append("==================")
-        lineas.append("\n\n")
+        lineas.append("\n\n\n")  # Espacio adicional para evitar corte prematuro
 
         texto_ticket_html = "\n".join(lineas)
 
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # Configuración optimizada a 48mm x 210mm con tamaño de letra ajustado a 10.5px
+        # Configuración web ajustada a 48mm x 250mm
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -380,7 +396,7 @@ def app():
                       background: #fff !important;
                     }}
                     @page {{
-                      size: 48mm 210mm;
+                      size: 48mm 250mm;
                       margin: 0mm;
                     }}
                     .btn-print {{ display: none !important; }}
@@ -432,7 +448,7 @@ def app():
                     margin: 0 auto;
                     padding: 0;
                     font-family: inherit;
-                    font-size: 10.5px; /* Letra ajustada y optimizada para el espacio */
+                    font-size: 10.5px;
                     font-weight: bold;
                     line-height: 1.2;
                     display: inline-block;
@@ -475,7 +491,7 @@ def app():
                 </html>
                 """
 
-        st.markdown("### 🖨️ Vista Previa del Ticket (48x210 mm)")
+        st.markdown("### 🖨️ Vista Previa del Ticket (48x250 mm)")
         st.components.v1.html(html_ticket_preview, height=580, scrolling=True)
 
     with col_no:

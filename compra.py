@@ -9,7 +9,7 @@ import streamlit as st
 EXCEL_PATH = "assets/alumnosprimaria.xlsx"
 FOLIOS_DIR = "assets/folios"
 LOGO_PATH = "assets/logo.png"
-QR_PATH = "assets/qr_ticket.png"
+QR_PATH = "assets/qr_ticket.png"  # Ruta corregida y limpia
 
 
 @st.cache_data
@@ -100,9 +100,10 @@ def generar_ticket_pdf(datos_compra, folio):
       textColor="#000000",
   )
 
+  # Logo en PDF (reducido un 20% proporcionalmente, ej. ancho 28mm)
   if os.path.exists(LOGO_PATH):
     try:
-      img_logo = Image(LOGO_PATH, width=35 * mm, height=12 * mm)
+      img_logo = Image(LOGO_PATH, width=28 * mm, height=10 * mm)
       img_logo.hAlign = "CENTER"
       story.append(img_logo)
       story.append(Spacer(1, 4))
@@ -154,9 +155,10 @@ def generar_ticket_pdf(datos_compra, folio):
   story.append(Paragraph("================================", style_mono_centro))
   story.append(Spacer(1, 6))
 
+  # QR en la parte inferior del PDF
   if os.path.exists(QR_PATH):
     try:
-      img_qr = Image(QR_PATH, width=24 * mm, height=24 * mm)
+      img_qr = Image(QR_PATH, width=22 * mm, height=22 * mm)
       img_qr.hAlign = "CENTER"
       story.append(img_qr)
     except Exception:
@@ -255,7 +257,7 @@ def app():
         st.success(f"¡Compra realizada con éxito! Folio generado: {folio}")
         st.session_state["show_confirm"] = False
 
-        # Generar texto exacto para el ticket térmico con proporción conservada
+        # Texto del ticket térmico
         lineas = []
         lineas.append("================================")
         lineas.append("    FOTOGRAFÍA NAVIDAD 2026   ")
@@ -295,11 +297,11 @@ def app():
 
         texto_ticket_html = "\n".join(lineas)
 
-        # Cargar logo y QR en base64 para mantener proporciones en pantalla e impresión
+        # Cargar imágenes en base64
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # Construir HTML interactivo con vista previa térmica
+        # HTML con logo reducido 20% proporcionalmente (max-width: 36mm) y QR asegurado abajo
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -330,7 +332,7 @@ def app():
                     text-align: center;
                   }}
                   .logo-container img {{
-                    max-width: 45mm;
+                    max-width: 36mm; /* Reducido un 20% manteniendo proporciones */
                     height: auto;
                     display: block;
                     margin: 0 auto 5px auto;
@@ -352,8 +354,8 @@ def app():
                     text-align: center;
                   }}
                   .qr-container img {{
-                    width: 25mm;
-                    height: 25mm;
+                    width: 24mm;
+                    height: 24mm;
                     display: block;
                     margin: 0 auto;
                   }}
@@ -389,9 +391,8 @@ def app():
                 """
 
         st.markdown("### 🖨️ Vista Previa del Ticket Térmico")
-        st.components.v1.html(html_ticket_preview, height=550, scrolling=True)
+        st.components.v1.html(html_ticket_preview, height=580, scrolling=True)
 
-        # Botón adicional de descarga directa del PDF
         with open(pdf_path, "rb") as f:
           st.download_button(
               label="📥 Descargar PDF del Ticket",

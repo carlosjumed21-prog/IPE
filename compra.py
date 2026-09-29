@@ -100,10 +100,10 @@ def generar_ticket_pdf(datos_compra, folio):
       textColor="#000000",
   )
 
-  # Logo en PDF (reducido un 20% proporcionalmente)
+  # Logo en PDF (reducido un 15% proporcionalmente)
   if os.path.exists(LOGO_PATH):
     try:
-      img_logo = Image(LOGO_PATH, width=28 * mm, height=10 * mm)
+      img_logo = Image(LOGO_PATH, width=30 * mm, height=11 * mm)
       img_logo.hAlign = "CENTER"
       story.append(img_logo)
       story.append(Spacer(1, 4))
@@ -121,6 +121,7 @@ def generar_ticket_pdf(datos_compra, folio):
   story.append(Paragraph(f"Grupo: {datos_compra['Grupo']}", style_mono_izq))
   story.append(Paragraph("--------------------------------", style_mono_centro))
 
+  # Cabecera de la tabla de conceptos mejorada
   story.append(Paragraph("CANT DESCRIPCIÓN          P.UNIT", style_mono_izq))
   story.append(Paragraph("            TOTAL               ", style_mono_izq))
   story.append(Paragraph("--------------------------------", style_mono_centro))
@@ -189,22 +190,24 @@ def app():
     return
 
   with st.form("form_compra"):
-    # 1. Menú desplegable de Grupos
+    # 1. Menú desplegable de Grupos (Sin selección por defecto)
     lista_grupos = sorted(list(dic_grupos.keys()))
     grupo_seleccionado = st.selectbox(
         "Seleccione el Grupo:",
         options=lista_grupos,
-        index=0 if lista_grupos else None,
+        index=None,
+        placeholder="Seleccione un grupo...",
     )
 
-    # 2. Menú desplegable de Alumnos acorde al grupo
+    # 2. Menú desplegable de Alumnos acorde al grupo (Sin selección por defecto)
     lista_alumnos = (
         dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
     )
     nombre_alumno = st.selectbox(
         "Nombre del alumno:",
         options=lista_alumnos,
-        index=0 if lista_alumnos else None,
+        index=None,
+        placeholder="Seleccione un alumno...",
     )
 
     st.markdown("---")
@@ -218,13 +221,19 @@ def app():
             "Jose Francisco Resendiz",
             "Grecia Ramirez Arenas",
         ],
+        index=None,
+        placeholder="Seleccione quién atiende...",
     )
 
     submitted = st.form_submit_button("Confirmar Compra")
 
   if submitted:
-    if not nombre_alumno:
-      st.warning("Por favor seleccione un alumno válido.")
+    if not grupo_seleccionado:
+      st.warning("⚠️ Por favor seleccione un grupo.")
+    elif not nombre_alumno:
+      st.warning("⚠️ Por favor seleccione un alumno.")
+    elif not atendio:
+      st.warning("⚠️ Por favor seleccione quién atendió.")
     else:
       st.session_state["pending_compra"] = {
           "Alumno": nombre_alumno,
@@ -259,7 +268,7 @@ def app():
         st.success(f"¡Compra realizada con éxito! Folio generado: {folio}")
         st.session_state["show_confirm"] = False
 
-        # Texto del ticket térmico
+        # Texto del ticket térmico con diseño mejorado
         lineas = []
         lineas.append("================================")
         lineas.append("    FOTOGRAFÍA NAVIDAD 2026   ")
@@ -303,7 +312,7 @@ def app():
         logo_base64 = obtener_imagen_base64(LOGO_PATH)
         qr_base64 = obtener_imagen_base64(QR_PATH)
 
-        # HTML con logo reducido 20% y QR en la parte inferior
+        # HTML con logo reducido 15% (max-width: 38mm) y QR asegurado abajo
         html_ticket_preview = f"""
                 <!DOCTYPE html>
                 <html>
@@ -334,7 +343,7 @@ def app():
                     text-align: center;
                   }}
                   .logo-container img {{
-                    max-width: 36mm; /* Reducido 20% manteniendo proporciones */
+                    max-width: 38mm; /* Reducido un 15% manteniendo proporciones */
                     height: auto;
                     display: block;
                     margin: 0 auto 5px auto;

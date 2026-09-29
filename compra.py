@@ -112,7 +112,7 @@ def obtener_siguiente_folio():
 
 
 def guardar_en_google_sheets(datos):
-    """Sincroniza la venta insertando exactamente en la siguiente fila disponible de la tabla de la hoja."""
+    """Sincroniza la venta llenando estrictamente la siguiente celda vacía dentro de la tabla de la hoja."""
     try:
         scope = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -130,10 +130,18 @@ def guardar_en_google_sheets(datos):
         except Exception:
             worksheet = sh.sheet1
 
-        # Obtenemos los valores de la columna A para calcular la fila exacta libre y evitar celdas fantasma
+        # Obtenemos todos los valores de la columna A para encontrar la última fila real con datos de la tabla
         columna_a = worksheet.col_values(1)
-        siguiente_fila = len(columna_a) + 1
-        siguiente_id = len(columna_a) if len(columna_a) > 0 else 1
+        
+        # Filtramos elementos vacíos reales al final para hallar la última fila válida de la tabla
+        ultima_fila_real = 1
+        for idx, val in enumerate(columna_a):
+            if str(val).strip() != "":
+                ultima_fila_real = idx + 1
+
+        # Si la tabla solo tiene el encabezado en la fila 1, la siguiente fila es la 2.
+        siguiente_fila = max(2, ultima_fila_real + 1)
+        siguiente_id = siguiente_fila - 1  # ID consecutivo exacto basado en la fila
 
         # Orden estricto: Col A (#), Col B (Folio), Col C (Nombre), Col D (Fecha), Col E (Importe), Col F (Atendio)
         nueva_fila = [
@@ -273,7 +281,6 @@ def obtener_imagen_base64(ruta_imagen):
 def app():
     st.subheader("📝 Registrar Nueva Compra")
 
-    # Inicializar estado de procesamiento si no existe
     if "is_processing" not in st.session_state:
         st.session_state["is_processing"] = False
 
@@ -357,7 +364,7 @@ def app():
         col_si, col_no = st.columns(2)
 
         with col_si:
-            # Botón inhabilitado automáticamente mientras se procesa para evitar registros dobles
+            # Controlamos el bloqueo del botón para que no se presione dos veces
             if st.button(
                 "Sí, Confirmar",
                 disabled=st.session_state["is_processing"],
@@ -382,19 +389,12 @@ def app():
 
                 # 2. Sincronizar en Google Sheets oficial
                 sheet_ok = guardar_en_google_sheets(datos)
-                if sheet_ok:
-                    st.success(
-                        f"¡Compra realizada y sincronizada en Google Sheets! Folio:"
-                        f" #{folio}"
-                    )
-                else:
-                    st.warning(
-                        f"Compra guardada localmente, pero hubo un error al"
-                        f" sincronizar con Google Sheets. Folio: #{folio}"
-                    )
 
-                st.session_state["show_confirm"] = False
-                st.session_state["is_processing"] = False
+                # Ventana emergente con los siguientes pasos y éxito
+                st.success(
+                    f"🎉 ¡Venta confirmada con éxito! Folio asignado: #{folio}\n\n"
+                    f"{'✅ Sincronizado correctamente en Google Sheets.' if sheet_ok else '⚠️ Guardado localmente (error de red con Google Sheets).'}"
+                )
 
                 pdf_path = generar_ticket_pdf(datos, folio)
 
@@ -545,10 +545,13 @@ def app():
 
                 st.markdown("### 🖨️ Vista Previa del Ticket (48x250 mm)")
                 st.components.v1.html(html_ticket_preview, height=620, scrolling=True)
-                st.rerun()
+
+                # Limpiamos estados de confirmación
+                st.session_state["show_confirm"] = False
+                st.session_state["is_processing"] = False
 
         with col_no:
             if st.button("No, Regresar", disabled=st.session_state["is_processing"]):
-                st.info("Captura cancelada. Puede modificar los datos.")
+                st.info("Captura cancelada.")
                 st.session_state["show_confirm"] = False
                 st.rerun()

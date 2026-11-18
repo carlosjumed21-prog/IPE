@@ -45,7 +45,7 @@ def main():
         col3, col4 = st.columns(2)
 
         with col3:
-            st.warning("museum **Papalote Museo del Niño**") # O usa un emoji representativo como 🧸 o 🪁
+            st.warning("🪁 **Papalote Museo del Niño**") # Corregido el texto suelto
             st.markdown("Sistema de control y registro de excursión.")
             if st.button("Registrar - Papalote", use_container_width=True):
                 st.session_state["active_app"] = "papalote"

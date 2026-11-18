@@ -20,7 +20,7 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1ZnTwACPO9rxudYkd-J4aV9PLRMS
 
 @st.cache_data
 def cargar_alumnos_por_grupos():
-    """Carga los alumnos estrictamente de 4to, 5to y 6to (hojas desde índice 6 en adelante),
+    """Carga los alumnos estrictamente de 1ro a 3ro (primeras 6 hojas, índices 0 a 5),
     leyendo desde la columna B (índice 1) a partir de la fila 10.
     """
     if not os.path.exists(EXCEL_PATH):
@@ -32,7 +32,8 @@ def cargar_alumnos_por_grupos():
         datos_grupos = {}
 
         for idx, hoja in enumerate(todas_hojas):
-            if idx >= 6:
+            # Solo tomamos las primeras 6 hojas (1.º a 3.º de primaria, índices 0 al 5)
+            if idx < 6:
                 df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
 
                 if df_hoja.shape[0] >= 10 and df_hoja.shape[1] > 1:
@@ -58,7 +59,7 @@ def cargar_alumnos_por_grupos():
         if not datos_grupos:
             return (
                 None,
-                "No se encontraron alumnos de 4to, 5to o 6to en las hojas correspondientes.",
+                "No se encontraron alumnos de 1ro a 3ro en las hojas correspondientes.",
             )
 
         return datos_grupos, None
@@ -111,7 +112,7 @@ def obtener_siguiente_folio():
 
 
 def obtener_historial_alumno_sheets(grupo, alumno_nombre):
-    """Consulta Google Sheets para traer el paquete previo, pagos, costo total y restante."""
+    """Consulta Google Sheets para traer los pagos previos, costo total y restante del alumno."""
     try:
         scope = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -130,8 +131,8 @@ def obtener_historial_alumno_sheets(grupo, alumno_nombre):
         filas = worksheet.get_all_values()
         for idx, fila in enumerate(filas):
             if len(fila) > 2 and str(fila[2]).strip().lower() == alumno_nombre.strip().lower():
-                tipo_paquete_previo = str(fila[3]).strip() if len(fila) > 3 else ""
-                total_cubrir = float(fila[4]) if len(fila) > 4 and str(fila[4]).replace('.', '', 1).isdigit() else 0.0
+                tipo_servicio = str(fila[3]).strip() if len(fila) > 3 else "Excursión Papalote"
+                total_cubrir = float(fila[4]) if len(fila) > 4 and str(fila[4]).replace('.', '', 1).isdigit() else 700.0
                 
                 pagos_previos = []
                 for col_idx in range(5, 10):
@@ -142,7 +143,7 @@ def obtener_historial_alumno_sheets(grupo, alumno_nombre):
                 restante = float(fila[10]) if len(fila) > 10 and str(fila[10]).replace('.', '', 1).isdigit() else max(0.0, total_cubrir - sum(pagos_previos))
                 return {
                     "fila": idx + 1,
-                    "tipo_paquete": tipo_paquete_previo,
+                    "tipo_servicio": tipo_servicio,
                     "total_cubrir": total_cubrir,
                     "pagos_previos": pagos_previos,
                     "restante": restante
@@ -186,7 +187,7 @@ def guardar_en_google_sheets(datos):
             pagos_a_escribir = pagos[:5]
             nuevo_restante = max(0.0, total_cubrir - sum([p for p in pagos_a_escribir if isinstance(p, (int, float))]))
 
-            worksheet.update_cell(fila_idx, 4, datos["TipoPaquete"])
+            worksheet.update_cell(fila_idx, 4, datos["TipoServicio"])
             worksheet.update_cell(fila_idx, 5, total_cubrir)
             for i, p_val in enumerate(pagos_a_escribir):
                 worksheet.update_cell(fila_idx, 6 + i, p_val if p_val != "" else "")
@@ -210,7 +211,7 @@ def guardar_en_google_sheets(datos):
                 siguiente_id,
                 datos["Folio"],
                 datos["Alumno"],
-                datos["TipoPaquete"],
+                datos["TipoServicio"],
                 datos["Total_Cubrir"],
                 datos["ImporteAbono"],
                 "", "", "", "",
@@ -282,7 +283,7 @@ def generar_ticket_pdf(datos_compra, folio):
     story.append(Paragraph(f"Fecha: {datos_compra['Fecha']}", style_mono_izq))
     story.append(Paragraph(f"Alumno: {datos_compra['Alumno']}", style_mono_izq))
     story.append(Paragraph(f"Grupo: {datos_compra['Grupo']}", style_mono_izq))
-    story.append(Paragraph(f"Paquete: {datos_compra['TipoPaquete']}", style_mono_izq))
+    story.append(Paragraph(f"Servicio: {datos_compra['TipoServicio']}", style_mono_izq))
     story.append(Paragraph("--------------------------------", style_mono_centro))
 
     story.append(Paragraph(f"Costo Total: ${datos_compra['Total_Cubrir']:.2f}", style_mono_izq))
@@ -328,7 +329,7 @@ def obtener_imagen_base64(ruta_imagen):
 
 
 def app():
-    st.subheader("🪁 Registrar Abono - Excursión Papalote Museo del Niño")
+    st.subheader("🪁 Registrar Abono - Papalote Museo del Niño")
 
     if "is_processing_papalote" not in st.session_state:
         st.session_state["is_processing_papalote"] = False
@@ -499,7 +500,7 @@ def app():
         st.session_state["alumno_seleccionado_papalote"] = None
 
     grupo_seleccionado = st.selectbox(
-        "Seleccione el Grupo (4to, 5to o 6to):",
+        "Seleccione el Grupo (1ro a 3ro):",
         options=lista_grupos,
         index=None,
         placeholder="Seleccione un grupo...",
@@ -522,46 +523,25 @@ def app():
     )
 
     historial_actual = None
-    paquete_fijo_index = 0
-    tiene_registro_previo = False
-
     if grupo_seleccionado and nombre_alumno:
         historial_actual = obtener_historial_alumno_sheets(grupo_seleccionado, nombre_alumno)
         if historial_actual and historial_actual["total_cubrir"] > 0:
-            tiene_registro_previo = True
-            if "Sin" in historial_actual["tipo_paquete"]:
-                paquete_fijo_index = 1
-            else:
-                paquete_fijo_index = 0
-
             if historial_actual["restante"] <= 0:
-                st.success(f"✅ **Estado Actual:** ¡Cuenta liquidada al 100%! Paquete: *{historial_actual['tipo_paquete']}* (Total: ${historial_actual['total_cubrir']:.2f})")
+                st.success(f"✅ **Estado Actual:** ¡Cuenta liquidada al 100%! (Total: ${historial_actual['total_cubrir']:.2f})")
             else:
-                st.warning(f"📊 **Cuenta Activa:** Paquete asignado: **{historial_actual['tipo_paquete']}** | Costo: ${historial_actual['total_cubrir']:.2f} | Pagado: ${sum(historial_actual['pagos_previos']):.2f} | **Restante: ${historial_actual['restante']:.2f}**")
+                st.warning(f"📊 **Cuenta Activa:** Costo total: ${historial_actual['total_cubrir']:.2f} | Pagado: ${sum(historial_actual['pagos_previos']):.2f} | **Restante: ${historial_actual['restante']:.2f}**")
         else:
-            st.info("ℹ️ Este alumno no tiene registros previos. Seleccione el paquete inicial para su primer abono.")
+            st.info("ℹ️ Este alumno no tiene registros previos. Se asignará el costo único de $700.00.")
 
     with st.form("form_abono_papalote"):
         st.markdown("---")
         
-        paquete_opciones = {
-            "Con Alimentos": 1050.0,
-            "Sin Alimentos": 900.0
-        }
+        # Servicio único fijo de Papalote por $700.00
+        tipo_servicio = "Excursión Papalote Museo del Niño"
+        costo_total_fijo = 700.0
         
-        tipo_paquete = st.selectbox(
-            "Paquete Seleccionado:",
-            options=list(paquete_opciones.keys()),
-            index=paquete_fijo_index,
-            disabled=tiene_registro_previo,
-            help="El paquete no se puede modificar porque ya cuenta con un registro previo." if tiene_registro_previo else ""
-        )
-        
-        if tiene_registro_previo and historial_actual:
-            tipo_paquete = historial_actual["tipo_paquete"] if historial_actual["tipo_paquete"] in paquete_opciones else list(paquete_opciones.keys())[paquete_fijo_index]
-
-        costo_total_fijo = paquete_opciones[tipo_paquete]
-        st.write(f"💵 **Costo Total del Paquete:** ${costo_total_fijo:.2f}")
+        st.text_input("Concepto / Servicio:", value=tipo_servicio, disabled=True)
+        st.write(f"💵 **Costo Total del Servicio:** ${costo_total_fijo:.2f}")
 
         sugerencia_abono = float(historial_actual["restante"]) if (historial_actual and historial_actual["restante"] > 0) else 100.0
 
@@ -608,7 +588,7 @@ def app():
                 st.session_state["pending_compra_papalote"] = {
                     "Alumno": nombre_alumno,
                     "Grupo": grupo_seleccionado,
-                    "TipoPaquete": tipo_paquete,
+                    "TipoServicio": tipo_servicio,
                     "Total_Cubrir": total_base,
                     "ImporteAbono": importe_abono,
                     "RestanteNuevo": restante_nuevo,

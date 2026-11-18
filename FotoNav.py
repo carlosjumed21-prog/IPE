@@ -1,25 +1,24 @@
-
 import streamlit as st
 
 def app():
-    st.title("🎄 Sistema de Gestión - Fotografía Navidad 2026")
+    st.title("🎢 Sistema de Gestión - Excursiones Escolares")
     st.markdown("---")
 
-    # Menú interno para el módulo FotoNav
+    # Menú interno para el módulo de KidZania / Excursiones
     menu = st.sidebar.selectbox(
-        "Selecciona una opción (FotoNav)", ["Nueva Compra", "Consultar Compra"]
+        "Selecciona una opción (Excursiones)", ["Nueva Compra", "Consultar Compra"]
     )
 
     if menu == "Nueva Compra":
         try:
-            import compra
-            compra.app()
+            import kidzania_compra
+            kidzania_compra.app()
         except ImportError:
-            st.error("No se encontró el módulo `compra.py`.")
+            st.error("No se encontró el módulo `kidzania_compra.py`.")
             
     elif menu == "Consultar Compra":
         try:
-            import consulta
-            consulta.app()
+            import kidzania_consulta  # O el nombre que uses para consultar
+            kidzania_consulta.app()
         except ImportError:
-            st.error("No se encontró el módulo `consulta.py`.")
+            st.error("No se encontró el módulo de consulta de KidZania.")

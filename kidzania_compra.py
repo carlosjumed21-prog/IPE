@@ -32,7 +32,6 @@ def cargar_alumnos_por_grupos():
         datos_grupos = {}
 
         for idx, hoja in enumerate(todas_hojas):
-            # Solo tomamos las hojas de 4to, 5to y 6to (a partir de la 7ª hoja, índice >= 6)
             if idx >= 6:
                 df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
 
@@ -129,12 +128,11 @@ def obtener_historial_alumno_sheets(grupo, alumno_nombre):
             worksheet = sh.sheet1
 
         filas = worksheet.get_all_values()
-        # Buscamos la fila donde coincida el nombre del alumno (columna C / índice 2)
         for idx, fila in enumerate(filas):
             if len(fila) > 2 and str(fila[2]).strip().lower() == alumno_nombre.strip().lower():
                 total_cubrir = float(fila[4]) if len(fila) > 4 and str(fila[4]).replace('.', '', 1).isdigit() else 0.0
                 pagos_previos = []
-                for col_idx in range(5, 10):  # Columnas F a J (índices 5,6,7,8,9)
+                for col_idx in range(5, 10):
                     val_pago = float(fila[col_idx]) if len(fila) > col_idx and str(fila[col_idx]).replace('.', '', 1).isdigit() else 0.0
                     if val_pago > 0:
                         pagos_previos.append(val_pago)
@@ -179,7 +177,6 @@ def guardar_en_google_sheets(datos):
             pagos = historial["pagos_previos"]
             pagos.append(datos["ImporteAbono"])
             
-            # Asegurar hasta 5 espacios para pagos F-J
             while len(pagos) < 5:
                 pagos.append("")
                 
@@ -517,3 +514,119 @@ def app():
             if not grupo_seleccionado
             else "Seleccione un alumno..."
         ),
+        key="alumno_seleccionado_kidzania",
+    )
+
+    historial_actual = None
+    if grupo_seleccionado and nombre_alumno:
+        historial_actual = obtener_historial_alumno_sheets(grupo_seleccionado, nombre_alumno)
+        if historial_actual and historial_actual["total_cubrir"] > 0:
+            if historial_actual["restante"] <= 0:
+                st.success(f"✅ **Estado Actual:** ¡Cuenta liquidada al 100%! (Total: ${historial_actual['total_cubrir']:.2f})")
+            else:
+                st.info(f"📊 **Estado Actual del Alumno:** Costo total: ${historial_actual['total_cubrir']:.2f} | Pagado: ${sum(historial_actual['pagos_previos']):.2f} | **Restante por cubrir: ${historial_actual['restante']:.2f}**")
+        else:
+            st.info("ℹ️ Este alumno aún no registra pagos previos. Seleccione el paquete para iniciar.")
+
+    with st.form("form_abono_kidzania"):
+        st.markdown("---")
+        
+        paquete_opciones = {
+            "Con Alimentos": 1050.0,
+            "Sin Alimentos": 900.0
+        }
+        
+        tipo_paquete = st.selectbox(
+            "Seleccione el Paquete:",
+            options=list(paquete_opciones.keys()),
+            index=0
+        )
+        
+        costo_total_fijo = paquete_opciones[tipo_paquete]
+        st.write(f"💵 **Costo Total del Paquete:** ${costo_total_fijo:.2f}")
+
+        importe_abono = st.number_input(
+            "Importe a abonar en esta ocasión ($):", 
+            min_value=1.0, 
+            value=100.0, 
+            format="%.2f"
+        )
+
+        atendio = st.selectbox(
+            "Quién atendió:",
+            options=[
+                "Victoria Garcia Valencia",
+                "Jose Francisco Resendiz",
+                "Grecia Ramirez Arenas",
+            ],
+            index=None,
+            placeholder="Seleccione quién atiende...",
+        )
+
+        submitted = st.form_submit_button("Registrar Abono")
+
+    if submitted:
+        if not grupo_seleccionado:
+            st.warning("⚠️ Por favor seleccione un grupo.")
+        elif not nombre_alumno:
+            st.warning("⚠️ Por favor seleccione un alumno.")
+        elif not atendio:
+            st.warning("⚠️ Por favor seleccione quién atiende.")
+        elif importe_abono <= 0:
+            st.warning("⚠️ El importe del abono debe ser mayor a 0.")
+        else:
+            total_base = historial_actual["total_cubrir"] if (historial_actual and historial_actual["total_cubrir"] > 0) else costo_total_fijo
+            suma_pagos_anteriores = sum(historial_actual["pagos_previos"]) if historial_actual else 0.0
+            restante_nuevo = max(0.0, total_base - (suma_pagos_anteriores + importe_abono))
+
+            fecha_hora_actual = obtener_fecha_hora_actual()
+            st.session_state["pending_compra_kidzania"] = {
+                "Alumno": nombre_alumno,
+                "Grupo": grupo_seleccionado,
+                "TipoPaquete": tipo_paquete,
+                "Total_Cubrir": total_base,
+                "ImporteAbono": importe_abono,
+                "RestanteNuevo": restante_nuevo,
+                "Atendio": atendio,
+                "Fecha": fecha_hora_actual,
+            }
+            st.session_state["show_confirm_kidzania"] = True
+
+    if st.session_state.get("show_confirm_kidzania", False):
+        st.warning("⚠️ ¿Está seguro de registrar este abono para KidZania?")
+        col_si, col_no = st.columns(2)
+
+        with col_si:
+            if st.button(
+                "Sí, Confirmar Abono",
+                disabled=st.session_state["is_processing_kidzania"],
+                key="btn_confirmar_abono_kidzania",
+            ):
+                st.session_state["is_processing_kidzania"] = True
+                datos = st.session_state["pending_compra_kidzania"]
+
+                folio = obtener_siguiente_folio()
+                datos["Folio"] = folio
+
+                os.makedirs("assets", exist_ok=True)
+                if os.path.exists(CSV_PATH):
+                    df_reg = pd.read_csv(CSV_PATH)
+                    df_reg = pd.concat(
+                        [df_reg, pd.DataFrame([datos])], ignore_index=True
+                    )
+                else:
+                    df_reg = pd.DataFrame([datos])
+                df_reg.to_csv(CSV_PATH, index=False)
+
+                sheet_ok = guardar_en_google_sheets(datos)
+
+                st.session_state["ultima_venta_kidzania"] = datos
+                st.session_state["show_confirm_kidzania"] = False
+                st.session_state["is_processing_kidzania"] = False
+                st.rerun()
+
+        with col_no:
+            if st.button("No, Regresar", disabled=st.session_state["is_processing_kidzania"], key="btn_cancelar_kidzania"):
+                st.info("Registro de abono cancelado.")
+                st.session_state["show_confirm_kidzania"] = False
+                st.rerun()

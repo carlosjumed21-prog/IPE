@@ -111,7 +111,7 @@ def obtener_siguiente_folio():
 
 
 def obtener_historial_alumno_sheets(grupo, alumno_nombre):
-    """Consulta Google Sheets para traer los pagos previos, costo total y restante del alumno."""
+    """Consulta Google Sheets para traer el paquete previo, pagos, costo total y restante."""
     try:
         scope = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -130,9 +130,11 @@ def obtener_historial_alumno_sheets(grupo, alumno_nombre):
         filas = worksheet.get_all_values()
         for idx, fila in enumerate(filas):
             if len(fila) > 2 and str(fila[2]).strip().lower() == alumno_nombre.strip().lower():
+                tipo_paquete_previo = str(fila[3]).strip() if len(fila) > 3 else ""
                 total_cubrir = float(fila[4]) if len(fila) > 4 and str(fila[4]).replace('.', '', 1).isdigit() else 0.0
+                
                 pagos_previos = []
-                for col_idx in range(5, 10):
+                for col_idx in range(5, 10):  # Columnas F a J (índices 5 al 9)
                     val_pago = float(fila[col_idx]) if len(fila) > col_idx and str(fila[col_idx]).replace('.', '', 1).isdigit() else 0.0
                     if val_pago > 0:
                         pagos_previos.append(val_pago)
@@ -140,6 +142,7 @@ def obtener_historial_alumno_sheets(grupo, alumno_nombre):
                 restante = float(fila[10]) if len(fila) > 10 and str(fila[10]).replace('.', '', 1).isdigit() else max(0.0, total_cubrir - sum(pagos_previos))
                 return {
                     "fila": idx + 1,
+                    "tipo_paquete": tipo_paquete_previo,
                     "total_cubrir": total_cubrir,
                     "pagos_previos": pagos_previos,
                     "restante": restante
@@ -183,6 +186,7 @@ def guardar_en_google_sheets(datos):
             pagos_a_escribir = pagos[:5]
             nuevo_restante = max(0.0, total_cubrir - sum([p for p in pagos_a_escribir if isinstance(p, (int, float))]))
 
+            worksheet.update_cell(fila_idx, 4, datos["TipoPaquete"])
             worksheet.update_cell(fila_idx, 5, total_cubrir)
             for i, p_val in enumerate(pagos_a_escribir):
                 worksheet.update_cell(fila_idx, 6 + i, p_val if p_val != "" else "")
@@ -517,16 +521,27 @@ def app():
         key="alumno_seleccionado_kidzania",
     )
 
+    # Consultar historial en Google Sheets
     historial_actual = None
+    paquete_fijo_index = 0
+    tiene_registro_previo = False
+
     if grupo_seleccionado and nombre_alumno:
         historial_actual = obtener_historial_alumno_sheets(grupo_seleccionado, nombre_alumno)
         if historial_actual and historial_actual["total_cubrir"] > 0:
-            if historial_actual["restante"] <= 0:
-                st.success(f"✅ **Estado Actual:** ¡Cuenta liquidada al 100%! (Total: ${historial_actual['total_cubrir']:.2f})")
+            tiene_registro_previo = True
+            # Identificar qué paquete tenía asignado previamente
+            if "Sin" in historial_actual["tipo_paquete"]:
+                paquete_fijo_index = 1
             else:
-                st.info(f"📊 **Estado Actual del Alumno:** Costo total: ${historial_actual['total_cubrir']:.2f} | Pagado: ${sum(historial_actual['pagos_previos']):.2f} | **Restante por cubrir: ${historial_actual['restante']:.2f}**")
+                paquete_fijo_index = 0
+
+            if historial_actual["restante"] <= 0:
+                st.success(f"✅ **Estado Actual:** ¡Cuenta liquidada al 100%! Paquete: *{historial_actual['tipo_paquete']}* (Total: ${historial_actual['total_cubrir']:.2f})")
+            else:
+                st.warning(f"📊 **Cuenta Activa:** Paquete asignado: **{historial_actual['tipo_paquete']}** | Costo: ${historial_actual['total_cubrir']:.2f} | Pagado: ${sum(historial_actual['pagos_previos']):.2f} | **Restante: ${historial_actual['restante']:.2f}**")
         else:
-            st.info("ℹ️ Este alumno aún no registra pagos previos. Seleccione el paquete para iniciar.")
+            st.info("ℹ️ Este alumno no tiene registros previos. Seleccione el paquete inicial para su primer abono.")
 
     with st.form("form_abono_kidzania"):
         st.markdown("---")
@@ -536,19 +551,30 @@ def app():
             "Sin Alimentos": 900.0
         }
         
+        # Si ya tiene registro previo, bloqueamos la selección del paquete con disabled=True
         tipo_paquete = st.selectbox(
-            "Seleccione el Paquete:",
+            "Paquete Seleccionado:",
             options=list(paquete_opciones.keys()),
-            index=0
+            index=paquete_fijo_index,
+            disabled=tiene_registro_previo,
+            help="El paquete no se puede modificar porque ya cuenta con un registro previo." if tiene_registro_previo else ""
         )
         
+        # En caso de que el select esté deshabilitado, Streamlit a veces no pasa el valor en el form_submit directamente,
+        # por lo que aseguramos el valor correcto si ya tenía registro previo.
+        if tiene_registro_previo and historial_actual:
+            tipo_paquete = historial_actual["tipo_paquete"] if historial_actual["tipo_paquete"] in paquete_opciones else list(paquete_opciones.keys())[paquete_fijo_index]
+
         costo_total_fijo = paquete_opciones[tipo_paquete]
         st.write(f"💵 **Costo Total del Paquete:** ${costo_total_fijo:.2f}")
+
+        # Sugerir por defecto el restante exacto o un valor prudente
+        sugerencia_abono = float(historial_actual["restante"]) if (historial_actual and historial_actual["restante"] > 0) else 100.0
 
         importe_abono = st.number_input(
             "Importe a abonar en esta ocasión ($):", 
             min_value=1.0, 
-            value=100.0, 
+            value=sugerencia_abono, 
             format="%.2f"
         )
 
@@ -577,20 +603,26 @@ def app():
         else:
             total_base = historial_actual["total_cubrir"] if (historial_actual and historial_actual["total_cubrir"] > 0) else costo_total_fijo
             suma_pagos_anteriores = sum(historial_actual["pagos_previos"]) if historial_actual else 0.0
-            restante_nuevo = max(0.0, total_base - (suma_pagos_anteriores + importe_abono))
+            
+            # Validar que no abone más de lo que resta
+            restante_actual_calculado = max(0.0, total_base - suma_pagos_anteriores)
+            if importe_abono > restante_actual_calculado and restante_actual_calculado > 0:
+                st.warning(f"⚠️ El abono (${importe_abono:.2f}) es mayor al saldo pendiente actual (${restante_actual_calculado:.2f}).")
+            else:
+                restante_nuevo = max(0.0, restante_actual_calculado - importe_abono)
 
-            fecha_hora_actual = obtener_fecha_hora_actual()
-            st.session_state["pending_compra_kidzania"] = {
-                "Alumno": nombre_alumno,
-                "Grupo": grupo_seleccionado,
-                "TipoPaquete": tipo_paquete,
-                "Total_Cubrir": total_base,
-                "ImporteAbono": importe_abono,
-                "RestanteNuevo": restante_nuevo,
-                "Atendio": atendio,
-                "Fecha": fecha_hora_actual,
-            }
-            st.session_state["show_confirm_kidzania"] = True
+                fecha_hora_actual = obtener_fecha_hora_actual()
+                st.session_state["pending_compra_kidzania"] = {
+                    "Alumno": nombre_alumno,
+                    "Grupo": grupo_seleccionado,
+                    "TipoPaquete": tipo_paquete,
+                    "Total_Cubrir": total_base,
+                    "ImporteAbono": importe_abono,
+                    "RestanteNuevo": restante_nuevo,
+                    "Atendio": atendio,
+                    "Fecha": fecha_hora_actual,
+                }
+                st.session_state["show_confirm_kidzania"] = True
 
     if st.session_state.get("show_confirm_kidzania", False):
         st.warning("⚠️ ¿Está seguro de registrar este abono para KidZania?")

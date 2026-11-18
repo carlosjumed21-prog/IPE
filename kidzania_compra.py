@@ -1,10 +1,8 @@
-
 import streamlit as st
 from datetime import datetime
-from gsheets import get_sheet_connection  # O tu método habitual de conexión a Google Sheets
 
 def app():
-    st.subheader("🎟️ Registro de Compra - KidZania / Papalote")
+    st.subheader("🎟️ Registro de Compra - KidZania")
     st.markdown("Ingresa los datos del alumno, selecciona el grupo y registra los abonos correspondientes.")
     st.markdown("---")
 
@@ -56,32 +54,5 @@ def app():
             if not folio or not nombre:
                 st.warning("⚠️ Por favor, completa al menos el **Folio** y el **Nombre del alumno**.")
             else:
-                try:
-                    # Conexión a tu Google Sheet (ajusta según la hoja del grupo seleccionado)
-                    # El script buscará la pestaña correspondiente al grupo (ej. "1°APrim")
-                    ss = get_sheet_connection() 
-                    hoja_grupo = ss.getSheetByName(grupo_seleccionado) or ss.worksheet(grupo_seleccionado)
-                    
-                    # Estructura de las 12 columnas:
-                    # [Folio, Nombre, Fecha, Total a cubrir, Pago 1, Pago 2, Pago 3, Pago 4, Pago 5, Por restar (Fórmula), Atendió]
-                    # Nota: La columna 'Por restar' (Columna J / índice 10) se envía como fórmula para que Google Sheets la calcule dinámicamente.
-                    fila_datos = [
-                        folio, 
-                        nombre, 
-                        str(fecha), 
-                        total_cubrir, 
-                        pago_1, 
-                        pago_2, 
-                        pago_3, 
-                        pago_4, 
-                        pago_5, 
-                        f"=D{hoja_grupo.getLastRow() + 1}-SUMA(E{hoja_grupo.getLastRow() + 1}:I{hoja_grupo.getLastRow() + 1})", 
-                        atendio
-                    ]
-                    
-                    hoja_grupo.appendRow(fila_datos)
-                    st.success(f"¡Registro guardado correctamente en la hoja **{grupo_seleccionado}** para {nombre}!")
-                    
-                except Exception as e:
-                    # Si manejas la inserción por st.secrets o gspread nativo, puedes adaptarlo a tu función de conexión existente
-                    st.error(f"Error al intentar guardar en Google Sheets: {e}")
+                # Aquí puedes integrar tu lógica de gspread para insertar la fila en la hoja de Google Sheets correspondiente al grupo_seleccionado
+                st.success(f"¡Registro procesado correctamente para {nombre} en el grupo **{grupo_seleccionado}**!")

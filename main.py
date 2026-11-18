@@ -1,6 +1,8 @@
 import streamlit as st
 import FotoNav
 import Obra
+import Papalote  # Nuevo módulo
+import KidZania  # Nuevo módulo
 
 # Configuración inicial del tablero principal
 st.set_page_config(
@@ -20,6 +22,7 @@ def main():
         st.markdown("Bienvenido al tablero principal. Selecciona el sistema que deseas ejecutar:")
         st.markdown("---")
 
+        # Fila 1: Fotografía y Teatro
         col1, col2 = st.columns(2)
 
         with col1:
@@ -34,6 +37,25 @@ def main():
             st.markdown("Sistema de control, registro de compra y consulta.")
             if st.button("Registrar Compra - Obra", use_container_width=True):
                 st.session_state["active_app"] = "obra"
+                st.rerun()
+
+        st.markdown("") # Espaciador visual
+
+        # Fila 2: Excursiones
+        col3, col4 = st.columns(2)
+
+        with col3:
+            st.warning("museum **Papalote Museo del Niño**") # O usa un emoji representativo como 🧸 o 🪁
+            st.markdown("Sistema de control y registro de excursión.")
+            if st.button("Registrar - Papalote", use_container_width=True):
+                st.session_state["active_app"] = "papalote"
+                st.rerun()
+
+        with col4:
+            st.error("🏙️ **KidZania**")
+            st.markdown("Sistema de control y registro de excursión.")
+            if st.button("Registrar - KidZania", use_container_width=True):
+                st.session_state["active_app"] = "kidzania"
                 st.rerun()
 
     # Si el usuario seleccionó FotoNav
@@ -51,6 +73,22 @@ def main():
             st.rerun()
         st.markdown("---")
         Obra.app()
+
+    # Si el usuario seleccionó Papalote
+    elif st.session_state["active_app"] == "papalote":
+        if st.button("⬅️ Volver al Tablero Principal"):
+            st.session_state["active_app"] = "home"
+            st.rerun()
+        st.markdown("---")
+        Papalote.app()
+
+    # Si el usuario seleccionó KidZania
+    elif st.session_state["active_app"] == "kidzania":
+        if st.button("⬅️ Volver al Tablero Principal"):
+            st.session_state["active_app"] = "home"
+            st.rerun()
+        st.markdown("---")
+        KidZania.app()
 
 if __name__ == "__main__":
     main()

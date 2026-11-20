@@ -18,11 +18,38 @@ CSV_PATH = "assets/registros_compras_kidzania.csv"
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1ZnTwACPO9rxudYkd-J4aV9PLRMSKqbW4SDry4iKNLvM/edit?usp=sharing"
 
 
+def _extraer_alumnos_de_hoja(df_hoja):
+    if df_hoja.shape[0] < 10 or df_hoja.shape[1] <= 1:
+        return []
+    columna_b = df_hoja.iloc[9:, 1]
+    lista_alumnos = []
+    for val in columna_b:
+        if pd.notna(val):
+            nombre_limpio = str(val).strip()
+            if nombre_limpio and nombre_limpio.lower() not in [
+                "nan",
+                "nombre",
+                "alumnos",
+                "none",
+                "alumno",
+                "nombres",
+            ]:
+                lista_alumnos.append(nombre_limpio)
+    return sorted(list(set(lista_alumnos)))
+
+
+def _es_hoja_1_a_3(nombre_hoja):
+    n = str(nombre_hoja).strip().lower()
+    prefijos = ("1", "2", "3", "1°", "2°", "3°", "1o", "2o", "3o", "1ro", "2do", "3ro")
+    return n.startswith(prefijos)
+
+
 @st.cache_data
-def cargar_alumnos_por_grupos():
+def cargar_alumnos_por_grupos(cache_token=0):
     """Carga los alumnos estrictamente de 1ro a 3ro (primeras 6 hojas, índices 0 a 5),
     leyendo desde la columna B (índice 1) a partir de la fila 10.
     """
+    _ = cache_token
     if not os.path.exists(EXCEL_PATH):
         return None, f"No se encontró el archivo de Excel en la ruta: {EXCEL_PATH}"
 
@@ -35,26 +62,18 @@ def cargar_alumnos_por_grupos():
             # Solo tomamos las primeras 6 hojas (1.º a 3.º de primaria, índices 0 al 5)
             if idx < 6:
                 df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
+                lista_alumnos = _extraer_alumnos_de_hoja(df_hoja)
+                if lista_alumnos:
+                    datos_grupos[str(hoja)] = lista_alumnos
 
-                if df_hoja.shape[0] >= 10 and df_hoja.shape[1] > 1:
-                    columna_b = df_hoja.iloc[9:, 1]
-
-                    lista_alumnos = []
-                    for val in columna_b:
-                        if pd.notna(val):
-                            nombre_limpio = str(val).strip()
-                            if nombre_limpio and nombre_limpio.lower() not in [
-                                "nan",
-                                "nombre",
-                                "alumnos",
-                                "none",
-                                "alumno",
-                                "nombres",
-                            ]:
-                                lista_alumnos.append(nombre_limpio)
-
+        # Respaldo si las pestañas de 1ro a 3ro no están en los índices 0..5
+        if not datos_grupos:
+            for hoja in todas_hojas:
+                if _es_hoja_1_a_3(hoja):
+                    df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
+                    lista_alumnos = _extraer_alumnos_de_hoja(df_hoja)
                     if lista_alumnos:
-                        datos_grupos[str(hoja)] = sorted(list(set(lista_alumnos)))
+                        datos_grupos[str(hoja)] = lista_alumnos
 
         if not datos_grupos:
             return (
@@ -335,8 +354,10 @@ def app():
         st.session_state["is_processing_kidzania"] = False
     if "ultima_venta_kidzania" not in st.session_state:
         st.session_state["ultima_venta_kidzania"] = None
+    if "cache_token_kidzania" not in st.session_state:
+        st.session_state["cache_token_kidzania"] = 1
 
-    dic_grupos, error = cargar_alumnos_por_grupos()
+    dic_grupos, error = cargar_alumnos_por_grupos(st.session_state["cache_token_kidzania"])
     if error:
         st.error(f"Error al cargar el archivo de Excel: {error}")
         return
@@ -499,14 +520,22 @@ def app():
     def actualizar_grupo():
         st.session_state["alumno_seleccionado_kidzania"] = None
 
-    grupo_seleccionado = st.selectbox(
-        "Seleccione el Grupo (1ro a 3ro):",
-        options=lista_grupos,
-        index=None,
-        placeholder="Seleccione un grupo...",
-        key="grupo_seleccionado_kidzania",
-        on_change=actualizar_grupo,
-    )
+    col_grp, col_ref = st.columns([5, 1])
+    with col_grp:
+        grupo_seleccionado = st.selectbox(
+            "Seleccione el Grupo (1ro a 3ro):",
+            options=lista_grupos,
+            index=None,
+            placeholder="Seleccione un grupo...",
+            key="grupo_seleccionado_kidzania",
+            on_change=actualizar_grupo,
+        )
+    with col_ref:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄", help="Recargar padrón desde Excel", key="btn_reload_kidzania"):
+            st.cache_data.clear()
+            st.session_state["cache_token_kidzania"] += 1
+            st.rerun()
 
     lista_alumnos = dic_grupos.get(grupo_seleccionado, []) if grupo_seleccionado else []
 

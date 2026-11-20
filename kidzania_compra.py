@@ -20,7 +20,7 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1ZnTwACPO9rxudYkd-J4aV9PLRMS
 
 @st.cache_data
 def cargar_alumnos_por_grupos():
-    """Carga los alumnos estrictamente de 4to, 5to y 6to (hojas desde índice 6 en adelante),
+    """Carga los alumnos estrictamente de 1ro a 3ro (primeras 6 hojas, índices 0 a 5),
     leyendo desde la columna B (índice 1) a partir de la fila 10.
     """
     if not os.path.exists(EXCEL_PATH):
@@ -32,7 +32,8 @@ def cargar_alumnos_por_grupos():
         datos_grupos = {}
 
         for idx, hoja in enumerate(todas_hojas):
-            if idx >= 6:
+            # Solo tomamos las primeras 6 hojas (1.º a 3.º de primaria, índices 0 al 5)
+            if idx < 6:
                 df_hoja = pd.read_excel(EXCEL_PATH, sheet_name=hoja, header=None)
 
                 if df_hoja.shape[0] >= 10 and df_hoja.shape[1] > 1:
@@ -58,7 +59,7 @@ def cargar_alumnos_por_grupos():
         if not datos_grupos:
             return (
                 None,
-                "No se encontraron alumnos de 4to, 5to o 6to en las hojas correspondientes.",
+                "No se encontraron alumnos de 1ro a 3ro en las hojas correspondientes.",
             )
 
         return datos_grupos, None
@@ -499,7 +500,7 @@ def app():
         st.session_state["alumno_seleccionado_kidzania"] = None
 
     grupo_seleccionado = st.selectbox(
-        "Seleccione el Grupo (4to, 5to o 6to):",
+        "Seleccione el Grupo (1ro a 3ro):",
         options=lista_grupos,
         index=None,
         placeholder="Seleccione un grupo...",

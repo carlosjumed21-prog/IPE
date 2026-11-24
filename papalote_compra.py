@@ -131,7 +131,7 @@ def obtener_historial_alumno_sheets(grupo, alumno_nombre):
         for idx, fila in enumerate(filas):
             if len(fila) > 2 and str(fila[2]).strip().lower() == alumno_nombre.strip().lower():
                 tipo_servicio = str(fila[3]).strip() if len(fila) > 3 else "Excursión Papalote"
-                total_cubrir = float(fila[4]) if len(fila) > 4 and str(fila[4]).replace('.', '', 1).isdigit() else 700.0
+                total_cubrir = float(fila[4]) if len(fila) > 4 and str(fila[4]).replace('.', '', 1).isdigit() else 750.0
                 
                 pagos_previos = []
                 for col_idx in range(5, 10):
@@ -530,14 +530,14 @@ def app():
             else:
                 st.warning(f"📊 **Cuenta Activa:** Costo total: ${historial_actual['total_cubrir']:.2f} | Pagado: ${sum(historial_actual['pagos_previos']):.2f} | **Restante: ${historial_actual['restante']:.2f}**")
         else:
-            st.info("ℹ️ Este alumno no tiene registros previos. Se asignará el costo único de $700.00.")
+            st.info("ℹ️ Este alumno no tiene registros previos. Se asignará el costo único de $750.00.")
 
     with st.form("form_abono_papalote"):
         st.markdown("---")
         
-        # Servicio único fijo de Papalote por $700.00
+        # Servicio único fijo de Papalote por $750.00
         tipo_servicio = "Excursión Papalote Museo del Niño"
-        costo_total_fijo = 700.0
+        costo_total_fijo = 750.0
         
         st.text_input("Concepto / Servicio:", value=tipo_servicio, disabled=True)
         st.write(f"💵 **Costo Total del Servicio:** ${costo_total_fijo:.2f}")
